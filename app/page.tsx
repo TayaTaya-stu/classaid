@@ -8,6 +8,10 @@ type Post = {
   name: string
   message: string
   likes: number
+  laugh: number
+  sad: number
+  love: number
+  wow: number
 }
 
 export default function Home() {
@@ -21,13 +25,27 @@ export default function Home() {
       .select('*')
       .order('id', { ascending: false })
 
-    if (data) {
-      setPosts(data)
-    }
+    if (data) setPosts(data)
   }
 
   useEffect(() => {
     loadPosts()
+
+    // 🔴 リアルタイム更新（ここがSNS化の核心）
+    const channel = supabase
+      .channel('posts')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'posts' },
+        () => {
+          loadPosts()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [])
 
   async function handlePost() {
@@ -37,122 +55,81 @@ export default function Home() {
       name,
       message,
       likes: 0,
+      laugh: 0,
+      sad: 0,
+      love: 0,
+      wow: 0,
     })
 
     setMessage('')
     loadPosts()
   }
 
-  async function handleLike(id: number, currentLikes: number) {
+  async function react(id: number, field: keyof Post, value: number) {
     await supabase
       .from('posts')
-      .update({ likes: currentLikes + 1 })
+      .update({ [field]: value + 1 })
       .eq('id', id)
-
-    loadPosts()
   }
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        background: '#f5f7fb',
-        padding: '20px',
-        fontFamily: 'sans-serif',
-      }}
-    >
-      {/* ヘッダー */}
-      <div
-        style={{
-          background: '#2563eb',
-          color: 'white',
-          padding: '16px',
-          borderRadius: '12px',
-          marginBottom: '20px',
-        }}
-      >
-        <h1 style={{ margin: 0 }}>ClassAid</h1>
-        <p style={{ margin: 0, opacity: 0.9 }}>授業バックチャネル</p>
+    <div style={{ maxWidth: 700, margin: '0 auto', padding: 20, fontFamily: 'sans-serif' }}>
+
+      {/* 🔥 上部メッセージ */}
+      <div style={{ marginBottom: 20 }}>
+        <h1>授業バックチャネル</h1>
+
+        <p style={{ color: '#666' }}>
+          💬 思ったこと・質問・気づきをそのまま投稿してください。<br />
+          みんなの意見がリアルタイムで流れます。
+        </p>
+
+        <p style={{ fontWeight: 'bold' }}>
+          👉 いま感じたことをそのまま書いてOK（質問・感想なんでも）
+        </p>
       </div>
 
-      {/* 入力欄 */}
-      <div
-        style={{
-          background: 'white',
-          padding: '15px',
-          borderRadius: '12px',
-          marginBottom: '20px',
-        }}
-      >
-        <input
-          placeholder="名前"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          style={{
-            width: '100%',
-            padding: '10px',
-            marginBottom: '10px',
-            borderRadius: '8px',
-            border: '1px solid #ddd',
-          }}
-        />
+      {/* 投稿フォーム */}
+      <input
+        placeholder="名前（匿名OK）"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        style={{ width: '100%', padding: 10, marginBottom: 10 }}
+      />
 
-        <textarea
-          placeholder="コメント"
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          style={{
-            width: '100%',
-            height: '100px',
-            padding: '10px',
-            borderRadius: '8px',
-            border: '1px solid #ddd',
-            marginBottom: '10px',
-          }}
-        />
+      <textarea
+        placeholder="質問・コメント・気づき"
+        value={message}
+        onChange={(e) => setMessage(e.target.value)}
+        style={{ width: '100%', height: 100, padding: 10, marginBottom: 10 }}
+      />
 
-        <button
-          onClick={handlePost}
-          style={{
-            background: '#2563eb',
-            color: 'white',
-            border: 'none',
-            padding: '10px 20px',
-            borderRadius: '8px',
-            cursor: 'pointer',
-          }}
-        >
-          投稿
-        </button>
-      </div>
+      <button onClick={handlePost}>投稿</button>
+
+      <hr style={{ margin: '20px 0' }} />
 
       {/* 投稿一覧 */}
       {posts.map((post) => (
         <div
           key={post.id}
           style={{
-            background: 'white',
-            borderRadius: '12px',
-            padding: '15px',
-            marginBottom: '12px',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+            border: '1px solid #ddd',
+            borderRadius: 10,
+            padding: 15,
+            marginBottom: 10,
           }}
         >
           <strong>{post.name}</strong>
+          <p>{post.message}</p>
 
-          <p style={{ margin: '8px 0' }}>{post.message}</p>
-
-          <button
-            onClick={() => handleLike(post.id, post.likes)}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              fontSize: '16px',
-            }}
-          >
-            👍 {post.likes}
-          </button>
+          {/* リアクション */}
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button onClick={() => react(post.id, 'likes', post.likes)}>👍 {post.likes}</button>
+            <button onClick={() => react(post.id, 'laugh', post.laugh)}>😂 {post.laugh}</button>
+            <button onClick={() => react(post.id, 'love', post.love)}>❤️ {post.love}</button>
+            <button onClick={() => react(post.id, 'sad', post.sad)}>😢 {post.sad}</button>
+            <button onClick={() => react(post.id, 'wow', post.wow)}>😮 {post.wow}</button>
+          </div>
         </div>
       ))}
     </div>
