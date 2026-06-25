@@ -19,22 +19,16 @@ export default function Home() {
   const [message, setMessage] = useState('')
   const [posts, setPosts] = useState<Post[]>([])
 
-  // データ取得
   async function loadPosts() {
     const { data, error } = await supabase
       .from('posts')
       .select('*')
       .order('id', { ascending: false })
 
-    if (error) {
-      console.log(error)
-      return
-    }
-
+    if (error) return
     if (data) setPosts(data)
   }
 
-  // 初期読み込み + 自動更新（3秒ごと）
   useEffect(() => {
     loadPosts()
 
@@ -45,7 +39,6 @@ export default function Home() {
     return () => clearInterval(interval)
   }, [])
 
-  // 投稿
   async function handlePost() {
     if (!name.trim() || !message.trim()) return
 
@@ -60,7 +53,6 @@ export default function Home() {
     })
 
     if (error) {
-      console.log(error)
       alert(error.message)
       return
     }
@@ -69,55 +61,57 @@ export default function Home() {
     loadPosts()
   }
 
-  // いいね（即時反映 + DB更新）
   async function react(id: number, field: keyof Post, value: number) {
-    // ① まず画面を即更新（速く見せる）
     setPosts((prev) =>
       prev.map((p) =>
         p.id === id ? { ...p, [field]: value + 1 } : p
       )
     )
 
-    // ② DB更新
-    const { error } = await supabase
+    await supabase
       .from('posts')
       .update({ [field]: value + 1 })
       .eq('id', id)
-
-    if (error) {
-      console.log(error)
-      alert(error.message)
-    }
   }
 
   return (
     <div style={styles.page}>
-      
-      {/* 上：タイムライン */}
-      <div style={styles.feed}>
+
+      {/* タイトル */}
+      <div style={styles.header}>
         <h1 style={styles.title}>ClassAid</h1>
-
-        <p style={styles.sub}>
-          💬 授業中の気づき・質問・感想をリアルタイムで共有
+        <p style={styles.subtitle}>
+          授業中の気づき・質問・感想をリアルタイムで共有
         </p>
+      </div>
 
+      {/* 投稿一覧 */}
+      <div style={styles.feed}>
         {posts.map((post) => (
           <div key={post.id} style={styles.card}>
-            <div style={styles.name}>{post.name}</div>
+
+            <div style={styles.nameRow}>
+              <div style={styles.avatar}>
+                {post.name.slice(0, 1)}
+              </div>
+              <div style={styles.name}>{post.name}</div>
+            </div>
+
             <div style={styles.message}>{post.message}</div>
 
             <div style={styles.reactions}>
-              <button type="button" onClick={() => react(post.id, 'likes', post.likes)}>👍 {post.likes}</button>
-              <button type="button" onClick={() => react(post.id, 'laugh', post.laugh)}>😂 {post.laugh}</button>
-              <button type="button" onClick={() => react(post.id, 'love', post.love)}>❤️ {post.love}</button>
-              <button type="button" onClick={() => react(post.id, 'sad', post.sad)}>😢 {post.sad}</button>
-              <button type="button" onClick={() => react(post.id, 'wow', post.wow)}>😮 {post.wow}</button>
+              <button onClick={() => react(post.id, 'likes', post.likes)}>👍 {post.likes}</button>
+              <button onClick={() => react(post.id, 'laugh', post.laugh)}>😂 {post.laugh}</button>
+              <button onClick={() => react(post.id, 'love', post.love)}>❤️ {post.love}</button>
+              <button onClick={() => react(post.id, 'sad', post.sad)}>😢 {post.sad}</button>
+              <button onClick={() => react(post.id, 'wow', post.wow)}>😮 {post.wow}</button>
             </div>
+
           </div>
         ))}
       </div>
 
-      {/* 下：入力バー */}
+      {/* 入力バー */}
       <div style={styles.inputBar}>
         <input
           placeholder="名前"
@@ -133,7 +127,7 @@ export default function Home() {
           style={styles.text}
         />
 
-        <button type="button" onClick={handlePost} style={styles.button}>
+        <button onClick={handlePost} style={styles.button}>
           投稿
         </button>
       </div>
@@ -141,79 +135,105 @@ export default function Home() {
   )
 }
 
-// ===== UI =====
+/* ===== UI ===== */
 const styles: Record<string, React.CSSProperties> = {
+
   page: {
     height: '100dvh',
     display: 'flex',
     flexDirection: 'column',
     fontFamily: 'sans-serif',
-    background: '#f5f8ff',
+    background: 'linear-gradient(180deg, #eff6ff, #f8fafc)',
+  },
+
+  header: {
+    padding: 16,
+  },
+
+  title: {
+    color: '#1d4ed8',
+    margin: 0,
+  },
+
+  subtitle: {
+    color: '#64748b',
+    fontSize: 13,
+    marginTop: 4,
   },
 
   feed: {
     flex: 1,
     overflowY: 'auto',
-    padding: 20,
+    padding: 12,
     paddingBottom: 120,
   },
 
-  title: {
-    color: '#1d4ed8',
-    marginBottom: 5,
-  },
-
-  sub: {
-    color: '#666',
-    marginBottom: 20,
-  },
-
   card: {
-    background: '#fff',
-    borderRadius: 12,
+    background: 'rgba(255,255,255,0.85)',
+    backdropFilter: 'blur(10px)',
+    borderRadius: 16,
     padding: 14,
-    marginBottom: 10,
-    boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
-    borderLeft: '4px solid #3b82f6',
+    marginBottom: 12,
+    boxShadow: '0 8px 20px rgba(0,0,0,0.06)',
+    border: '1px solid rgba(59,130,246,0.15)',
+  },
+
+  nameRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+
+  avatar: {
+    width: 28,
+    height: 28,
+    borderRadius: '50%',
+    background: '#2563eb',
+    color: '#fff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 13,
   },
 
   name: {
-    fontWeight: 'bold',
-    color: '#1e3a8a',
+    fontWeight: 600,
+    color: '#1d4ed8',
   },
 
   message: {
-    marginTop: 6,
     marginBottom: 10,
+    color: '#111827',
   },
 
   reactions: {
     display: 'flex',
-    gap: 10,
+    gap: 8,
     flexWrap: 'wrap',
-    fontSize: 14,
   },
 
   inputBar: {
     display: 'flex',
     gap: 8,
     padding: 12,
-    borderTop: '1px solid #ddd',
-    background: '#fff',
+    background: 'rgba(255,255,255,0.9)',
+    backdropFilter: 'blur(10px)',
+    borderTop: '1px solid rgba(0,0,0,0.05)',
   },
 
   input: {
-    width: 120,
+    width: 110,
     padding: 8,
-    borderRadius: 8,
-    border: '1px solid #ccc',
+    borderRadius: 10,
+    border: '1px solid #cbd5e1',
   },
 
   text: {
     flex: 1,
     padding: 8,
-    borderRadius: 8,
-    border: '1px solid #ccc',
+    borderRadius: 10,
+    border: '1px solid #cbd5e1',
   },
 
   button: {
@@ -221,6 +241,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#fff',
     border: 'none',
     padding: '8px 14px',
-    borderRadius: 8,
+    borderRadius: 10,
   },
 }
