@@ -19,6 +19,7 @@ export default function Home() {
   const [message, setMessage] = useState('')
   const [posts, setPosts] = useState<Post[]>([])
 
+  // データ取得
   async function loadPosts() {
     const { data, error } = await supabase
       .from('posts')
@@ -26,30 +27,25 @@ export default function Home() {
       .order('id', { ascending: false })
 
     if (error) {
-      console.log('load error:', error)
+      console.log(error)
       return
     }
 
     if (data) setPosts(data)
   }
 
+  // 初期読み込み + 自動更新（3秒ごと）
   useEffect(() => {
     loadPosts()
 
-    const channel = supabase
-      .channel('posts')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'posts' },
-        () => loadPosts()
-      )
-      .subscribe()
+    const interval = setInterval(() => {
+      loadPosts()
+    }, 3000)
 
-    return () => {
-      supabase.removeChannel(channel)
-    }
+    return () => clearInterval(interval)
   }, [])
 
+  // 投稿
   async function handlePost() {
     if (!name.trim() || !message.trim()) return
 
@@ -64,7 +60,7 @@ export default function Home() {
     })
 
     if (error) {
-      console.log('insert error:', error)
+      console.log(error)
       alert(error.message)
       return
     }
@@ -73,14 +69,23 @@ export default function Home() {
     loadPosts()
   }
 
+  // いいね（即時反映 + DB更新）
   async function react(id: number, field: keyof Post, value: number) {
+    // ① まず画面を即更新（速く見せる）
+    setPosts((prev) =>
+      prev.map((p) =>
+        p.id === id ? { ...p, [field]: value + 1 } : p
+      )
+    )
+
+    // ② DB更新
     const { error } = await supabase
       .from('posts')
       .update({ [field]: value + 1 })
       .eq('id', id)
 
     if (error) {
-      console.log('update error:', error)
+      console.log(error)
       alert(error.message)
     }
   }
@@ -88,7 +93,7 @@ export default function Home() {
   return (
     <div style={styles.page}>
       
-      {/* 上 */}
+      {/* 上：タイムライン */}
       <div style={styles.feed}>
         <h1 style={styles.title}>ClassAid</h1>
 
@@ -112,7 +117,7 @@ export default function Home() {
         ))}
       </div>
 
-      {/* 下固定入力 */}
+      {/* 下：入力バー */}
       <div style={styles.inputBar}>
         <input
           placeholder="名前"
@@ -136,6 +141,7 @@ export default function Home() {
   )
 }
 
+// ===== UI =====
 const styles: Record<string, React.CSSProperties> = {
   page: {
     height: '100dvh',
@@ -154,6 +160,7 @@ const styles: Record<string, React.CSSProperties> = {
 
   title: {
     color: '#1d4ed8',
+    marginBottom: 5,
   },
 
   sub: {
@@ -184,6 +191,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     gap: 10,
     flexWrap: 'wrap',
+    fontSize: 14,
   },
 
   inputBar: {
