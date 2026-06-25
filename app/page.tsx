@@ -122,19 +122,20 @@ export default function Home() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  page: {
-    height: '100vh',
-    display: 'flex',
-    flexDirection: 'column',
-    fontFamily: 'sans-serif',
-    background: '#f5f8ff',
-  },
+ page: {
+  height: '100dvh',
+  display: 'flex',
+  flexDirection: 'column',
+  fontFamily: 'sans-serif',
+  background: '#f5f8ff',
+},
 
-  feed: {
-    flex: 1,
-    overflowY: 'auto',
-    padding: 20,
-  },
+ feed: {
+  flex: 1,
+  overflowY: 'auto',
+  padding: 20,
+  paddingBottom: 100,
+},
 
   title: {
     color: '#1d4ed8',
@@ -177,13 +178,15 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 14,
   },
 
-  inputBar: {
-    display: 'flex',
-    gap: 8,
-    padding: 12,
-    borderTop: '1px solid #ddd',
-    background: '#fff',
-  },
+ inputBar: {
+  position: 'sticky',
+  bottom: 0,
+  display: 'flex',
+  gap: 8,
+  padding: 12,
+  borderTop: '1px solid #ddd',
+  background: '#fff',
+},
 
   input: {
     width: 120,
