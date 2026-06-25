@@ -20,10 +20,15 @@ export default function Home() {
   const [posts, setPosts] = useState<Post[]>([])
 
   async function loadPosts() {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('posts')
       .select('*')
       .order('id', { ascending: false })
+
+    if (error) {
+      console.log('load error:', error)
+      return
+    }
 
     if (data) setPosts(data)
   }
@@ -48,7 +53,7 @@ export default function Home() {
   async function handlePost() {
     if (!name.trim() || !message.trim()) return
 
-    await supabase.from('posts').insert({
+    const { error } = await supabase.from('posts').insert({
       name,
       message,
       likes: 0,
@@ -58,20 +63,32 @@ export default function Home() {
       wow: 0,
     })
 
+    if (error) {
+      console.log('insert error:', error)
+      alert(error.message)
+      return
+    }
+
     setMessage('')
+    loadPosts()
   }
 
   async function react(id: number, field: keyof Post, value: number) {
-    await supabase
+    const { error } = await supabase
       .from('posts')
       .update({ [field]: value + 1 })
       .eq('id', id)
+
+    if (error) {
+      console.log('update error:', error)
+      alert(error.message)
+    }
   }
 
   return (
     <div style={styles.page}>
       
-      {/* 上：タイムライン */}
+      {/* 上 */}
       <div style={styles.feed}>
         <h1 style={styles.title}>ClassAid</h1>
 
@@ -79,28 +96,26 @@ export default function Home() {
           💬 授業中の気づき・質問・感想をリアルタイムで共有
         </p>
 
-        <div style={styles.posts}>
-          {posts.map((post) => (
-            <div key={post.id} style={styles.card}>
-              <div style={styles.name}>{post.name}</div>
-              <div style={styles.message}>{post.message}</div>
+        {posts.map((post) => (
+          <div key={post.id} style={styles.card}>
+            <div style={styles.name}>{post.name}</div>
+            <div style={styles.message}>{post.message}</div>
 
-              <div style={styles.reactions}>
-                <button onClick={() => react(post.id, 'likes', post.likes)}>👍 {post.likes}</button>
-                <button onClick={() => react(post.id, 'laugh', post.laugh)}>😂 {post.laugh}</button>
-                <button onClick={() => react(post.id, 'love', post.love)}>❤️ {post.love}</button>
-                <button onClick={() => react(post.id, 'sad', post.sad)}>😢 {post.sad}</button>
-                <button onClick={() => react(post.id, 'wow', post.wow)}>😮 {post.wow}</button>
-              </div>
+            <div style={styles.reactions}>
+              <button type="button" onClick={() => react(post.id, 'likes', post.likes)}>👍 {post.likes}</button>
+              <button type="button" onClick={() => react(post.id, 'laugh', post.laugh)}>😂 {post.laugh}</button>
+              <button type="button" onClick={() => react(post.id, 'love', post.love)}>❤️ {post.love}</button>
+              <button type="button" onClick={() => react(post.id, 'sad', post.sad)}>😢 {post.sad}</button>
+              <button type="button" onClick={() => react(post.id, 'wow', post.wow)}>😮 {post.wow}</button>
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
 
-      {/* 下：固定投稿エリア */}
+      {/* 下固定入力 */}
       <div style={styles.inputBar}>
         <input
-          placeholder="名前（匿名OK）"
+          placeholder="名前"
           value={name}
           onChange={(e) => setName(e.target.value)}
           style={styles.input}
@@ -113,7 +128,7 @@ export default function Home() {
           style={styles.text}
         />
 
-        <button onClick={handlePost} style={styles.button}>
+        <button type="button" onClick={handlePost} style={styles.button}>
           投稿
         </button>
       </div>
@@ -122,24 +137,23 @@ export default function Home() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
- page: {
-  height: '100dvh',
-  display: 'flex',
-  flexDirection: 'column',
-  fontFamily: 'sans-serif',
-  background: '#f5f8ff',
-},
+  page: {
+    height: '100dvh',
+    display: 'flex',
+    flexDirection: 'column',
+    fontFamily: 'sans-serif',
+    background: '#f5f8ff',
+  },
 
- feed: {
-  flex: 1,
-  overflowY: 'auto',
-  padding: 20,
-  paddingBottom: 100,
-},
+  feed: {
+    flex: 1,
+    overflowY: 'auto',
+    padding: 20,
+    paddingBottom: 120,
+  },
 
   title: {
     color: '#1d4ed8',
-    marginBottom: 5,
   },
 
   sub: {
@@ -147,16 +161,11 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 20,
   },
 
-  posts: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 12,
-  },
-
   card: {
     background: '#fff',
     borderRadius: 12,
     padding: 14,
+    marginBottom: 10,
     boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
     borderLeft: '4px solid #3b82f6',
   },
@@ -169,24 +178,21 @@ const styles: Record<string, React.CSSProperties> = {
   message: {
     marginTop: 6,
     marginBottom: 10,
-    color: '#111',
   },
 
   reactions: {
     display: 'flex',
     gap: 10,
-    fontSize: 14,
+    flexWrap: 'wrap',
   },
 
- inputBar: {
-  position: 'sticky',
-  bottom: 0,
-  display: 'flex',
-  gap: 8,
-  padding: 12,
-  borderTop: '1px solid #ddd',
-  background: '#fff',
-},
+  inputBar: {
+    display: 'flex',
+    gap: 8,
+    padding: 12,
+    borderTop: '1px solid #ddd',
+    background: '#fff',
+  },
 
   input: {
     width: 120,
@@ -208,6 +214,5 @@ const styles: Record<string, React.CSSProperties> = {
     border: 'none',
     padding: '8px 14px',
     borderRadius: 8,
-    cursor: 'pointer',
   },
 }
