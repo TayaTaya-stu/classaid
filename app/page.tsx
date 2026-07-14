@@ -79,7 +79,7 @@ export default function Home() {
 
       {/* タイトル */}
       <div style={styles.header}>
-        <h1 style={styles.title}>ClassAid</h1>
+        <h1 style={styles.title}>OpenClass</h1>
         <p style={styles.subtitle}>
           授業中の気づき・質問・感想をリアルタイムで共有
         </p>
@@ -91,20 +91,57 @@ export default function Home() {
           <div key={post.id} style={styles.card}>
 
             <div style={styles.nameRow}>
-              <div style={styles.avatar}>
+              <div style={styles.avatar} translate="no">
                 {post.name.slice(0, 1)}
               </div>
-              <div style={styles.name}>{post.name}</div>
+
+              <div style={styles.name} translate="no">
+                {post.name}
+              </div>
             </div>
 
             <div style={styles.message}>{post.message}</div>
 
-            <div style={styles.reactions}>
-              <button onClick={() => react(post.id, 'likes', post.likes)}>👍 {post.likes}</button>
-              <button onClick={() => react(post.id, 'laugh', post.laugh)}>😂 {post.laugh}</button>
-              <button onClick={() => react(post.id, 'love', post.love)}>❤️ {post.love}</button>
-              <button onClick={() => react(post.id, 'sad', post.sad)}>😢 {post.sad}</button>
-              <button onClick={() => react(post.id, 'wow', post.wow)}>😮 {post.wow}</button>
+            <div style={styles.reactions} translate="no">
+              <button
+                type="button"
+                translate="no"
+                onClick={() => react(post.id, 'likes', post.likes)}
+              >
+                <span translate="no">👍</span> {post.likes}
+              </button>
+
+              <button
+                type="button"
+                translate="no"
+                onClick={() => react(post.id, 'laugh', post.laugh)}
+              >
+                <span translate="no">😂</span> {post.laugh}
+              </button>
+
+              <button
+                type="button"
+                translate="no"
+                onClick={() => react(post.id, 'love', post.love)}
+              >
+                <span translate="no">❤️</span> {post.love}
+              </button>
+
+              <button
+                type="button"
+                translate="no"
+                onClick={() => react(post.id, 'sad', post.sad)}
+              >
+                <span translate="no">😢</span> {post.sad}
+              </button>
+
+              <button
+                type="button"
+                translate="no"
+                onClick={() => react(post.id, 'wow', post.wow)}
+              >
+                <span translate="no">😮</span> {post.wow}
+              </button>
             </div>
 
           </div>
@@ -114,6 +151,7 @@ export default function Home() {
       {/* 入力バー */}
       <div style={styles.inputBar}>
         <input
+          translate="no"
           placeholder="名前"
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -121,13 +159,19 @@ export default function Home() {
         />
 
         <input
+          translate="no"
           placeholder="質問・感想・気づき"
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           style={styles.text}
         />
 
-        <button onClick={handlePost} style={styles.button}>
+        <button
+          type="button"
+          translate="no"
+          onClick={handlePost}
+          style={styles.button}
+        >
           投稿
         </button>
       </div>
