@@ -16,8 +16,8 @@ export const AI_MODES = [
     name: "④ 全力ダメっこ",
   },
   {
-    id: "reaction",
-    name: "⑤ 短文リアクション",
+    id: "praise",
+    name: "⑤ 相手を立てる子",
   },
   {
     id: "honor",
