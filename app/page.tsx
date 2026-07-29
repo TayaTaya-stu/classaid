@@ -24,37 +24,86 @@ export default function Home() {
   >({})
 
   async function loadPosts() {
-    const { data, error } = await supabase
-      .from('posts')
-      .select('*')
-      .order('id', { ascending: false })
+    const { data: postsData, error: postsError } =
+      await supabase
+        .from('posts')
+        .select('*')
+        .order('id', { ascending: false })
 
-    if (error) {
-      console.error('投稿取得エラー:', error)
+    if (postsError) {
+      console.error('投稿取得エラー:', postsError)
       return
     }
 
-    if (data) {
-      setPosts(data)
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
-      const savedVotes: Record<number, VoteType> = {}
+    const { data: likesData, error: likesError } =
+      await supabase
+        .from('post_likes')
+        .select('post_id, user_id')
 
-      data.forEach((post) => {
-        const vote = localStorage.getItem(
-          `openclass_vote_${post.id}`
-        ) as VoteType | null
-
-        if (vote === 'likes' || vote === 'dislikes') {
-          savedVotes[post.id] = vote
-        }
-      })
-
-      setVotedPosts(savedVotes)
+    if (likesError) {
+      console.error('いいね取得エラー:', likesError)
+      return
     }
-  }
 
+    const likeCounts: Record<number, number> = {}
+    const savedVotes: Record<number, VoteType> = {}
+
+    likesData?.forEach((like) => {
+      likeCounts[like.post_id] =
+        (likeCounts[like.post_id] ?? 0) + 1
+
+      if (user && like.user_id === user.id) {
+        savedVotes[like.post_id] = 'likes'
+      }
+    })
+
+    postsData?.forEach((post) => {
+      const savedVote = localStorage.getItem(
+        `openclass_vote_${post.id}`
+      )
+
+      if (
+        savedVote === 'dislikes' &&
+        !savedVotes[post.id]
+      ) {
+        savedVotes[post.id] = 'dislikes'
+      }
+    })
+
+    const postsWithLikes =
+      postsData?.map((post) => ({
+        ...post,
+        likes: likeCounts[post.id] ?? 0,
+      })) ?? []
+
+    setPosts(postsWithLikes)
+    setVotedPosts(savedVotes)
+  }
   useEffect(() => {
-    loadPosts()
+    async function initialize() {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+
+      if (!session) {
+        const { error } =
+          await supabase.auth.signInAnonymously()
+
+        if (error) {
+          console.error('匿名ログインエラー:', error)
+          return
+        }
+      }
+
+      await checkUser()
+      await loadPosts()
+    }
+
+    initialize()
 
     const interval = setInterval(() => {
       loadPosts()
@@ -62,6 +111,14 @@ export default function Home() {
 
     return () => clearInterval(interval)
   }, [])
+
+  async function checkUser() {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    console.log('現在のユーザー:', user)
+  }
 
   async function handlePost() {
     const postingName =
@@ -114,6 +171,14 @@ export default function Home() {
   async function react(post: Post, field: VoteType) {
     const currentVote = votedPosts[post.id]
 
+    const {
+  data: { user },
+} = await supabase.auth.getUser()
+
+if (!user) {
+  console.error('ユーザー情報を取得できません')
+  return
+}
     let newLikes = post.likes ?? 0
     let newDislikes = post.dislikes ?? 0
     let nextVote: VoteType | undefined
@@ -184,19 +249,69 @@ export default function Home() {
       return next
     })
 
-    const { error } = await supabase
+let error = null
+
+if (field === 'likes') {
+  if (currentVote === 'likes') {
+    const result = await supabase
+      .from('post_likes')
+      .delete()
+      .eq('post_id', post.id)
+      .eq('user_id', user.id)
+
+    error = result.error
+  } else {
+    const result = await supabase
+      .from('post_likes')
+      .insert({
+        post_id: post.id,
+        user_id: user.id,
+      })
+
+    error = result.error
+  }
+
+  if (!error && currentVote === 'dislikes') {
+    const result = await supabase
       .from('posts')
       .update({
-        likes: newLikes,
         dislikes: newDislikes,
       })
       .eq('id', post.id)
 
-    if (error) {
-      console.error('リアクション更新エラー:', error)
-      await loadPosts()
-    }
+    error = result.error
   }
+} else {
+  if (currentVote === 'likes') {
+    const result = await supabase
+      .from('post_likes')
+      .delete()
+      .eq('post_id', post.id)
+      .eq('user_id', user.id)
+
+    error = result.error
+  }
+
+  if (!error) {
+    const result = await supabase
+      .from('posts')
+      .update({
+        dislikes: newDislikes,
+      })
+      .eq('id', post.id)
+
+    error = result.error
+  }
+}
+
+if (error) {
+  console.error('リアクション更新エラー:', error)
+  await loadPosts()
+  return
+}
+ await loadPosts()
+  }
+
   return (
     <div style={styles.page}>
       <div style={styles.header}>
@@ -242,7 +357,7 @@ export default function Home() {
                   onClick={() =>
                     react(post, 'likes')
                   }
-                  
+
                   style={{
                     ...styles.reactionButton,
                     ...(voted === 'likes'
@@ -258,7 +373,7 @@ export default function Home() {
                   onClick={() =>
                     react(post, 'dislikes')
                   }
-                 
+
                   style={{
                     ...styles.reactionButton,
                     ...(voted === 'dislikes'
@@ -444,12 +559,12 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
   },
 
-  selectedReaction: {
-    background: '#dbeafe',
-    borderColor: '#93c5fd',
-    color: '#1d4ed8',
-    fontWeight: 600,
-  },
+selectedReaction: {
+  background: '#dbeafe',
+  border: '1px solid #93c5fd',
+  color: '#1d4ed8',
+  fontWeight: 600,
+},
 
   inputBar: {
     display: 'flex',
