@@ -158,12 +158,14 @@ export default function Home() {
       return
     }
 
-    const replyInterval =
-      frequencySetting?.value === 'every_3'
-        ? 3
-        : frequencySetting?.value === 'every_5'
-          ? 5
-          : 1
+  const replyInterval =
+  frequencySetting?.value === 'every_2'
+    ? 2
+    : frequencySetting?.value === 'every_3'
+      ? 3
+      : frequencySetting?.value === 'every_5'
+        ? 5
+        : 1
 
     const { data: recentPosts, error: recentPostsError } =
       await supabase
@@ -181,19 +183,19 @@ export default function Home() {
 
     let consecutiveStudentPosts = 0
 
-for (const post of recentPosts ?? []) {
-  if (post.is_ai) {
-    break
-  }
+    for (const post of recentPosts ?? []) {
+      if (post.is_ai) {
+        break
+      }
 
-  consecutiveStudentPosts++
-}
+      consecutiveStudentPosts++
+    }
 
-if (
-  consecutiveStudentPosts % replyInterval !== 0
-) {
-  return
-}
+    if (
+      consecutiveStudentPosts % replyInterval !== 0
+    ) {
+      return
+    }
 
     setTimeout(async () => {
       try {

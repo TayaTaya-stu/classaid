@@ -164,6 +164,17 @@ export default function AdminPage() {
                 </label>
 
                 <label>
+  <input
+    type="radio"
+    name="reply-frequency"
+    checked={replyFrequency === 'every_2'}
+    onChange={() => saveReplyFrequency('every_2')}
+  />
+  {' '}
+  2件に1回返信
+</label>
+
+                <label>
                     <input
                         type="radio"
                         name="reply-frequency"

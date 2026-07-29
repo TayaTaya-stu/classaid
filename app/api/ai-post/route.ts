@@ -50,30 +50,31 @@ export async function POST() {
     }
 
     // AIモードが正しい値なら使用し、不正な場合はempathyにする
-  const aiModeSetting = settings?.find(
-  (item) => item.key === "ai_mode"
-);
+    const aiModeSetting = settings?.find(
+      (item) => item.key === "ai_mode"
+    );
 
-const replyFrequencySetting = settings?.find(
-  (item) => item.key === "reply_frequency"
-);
+    const replyFrequencySetting = settings?.find(
+      (item) => item.key === "reply_frequency"
+    );
 
-const aiMode =
-  aiModeSetting?.value &&
-  aiModeSetting.value in AI_PROMPTS
-    ? (aiModeSetting.value as keyof typeof AI_PROMPTS)
-    : "empathy";
+    const aiMode =
+      aiModeSetting?.value &&
+        aiModeSetting.value in AI_PROMPTS
+        ? (aiModeSetting.value as keyof typeof AI_PROMPTS)
+        : "empathy";
 
-const replyFrequency =
-  replyFrequencySetting?.value ?? "always";
+    const replyFrequency =
+      replyFrequencySetting?.value ?? "always";
 
-  const replyInterval =
-  replyFrequency === "every_3"
-    ? 3
-    : replyFrequency === "every_5"
-      ? 5
-      : 1;
-      
+ const replyInterval =
+  replyFrequency === "every_2"
+    ? 2
+    : replyFrequency === "every_3"
+      ? 3
+      : replyFrequency === "every_5"
+        ? 5
+        : 1;
     const selectedPrompt = AI_PROMPTS[aiMode];
 
     // Geminiに授業内容、最近の投稿、選択された性格を渡す
