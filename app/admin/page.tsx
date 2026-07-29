@@ -5,52 +5,76 @@ import { AI_MODES } from '@/lib/aiModes'
 
 export default function AdminPage() {
 
-const [lecture, setLecture] = useState('')
-const [selectedMode, setSelectedMode] = useState('empathy')
+    const [lecture, setLecture] = useState('')
+    const [selectedMode, setSelectedMode] = useState('empathy')
+    const [replyFrequency, setReplyFrequency] = useState('always')
 
-useEffect(() => {
+    useEffect(() => {
 
-  async function loadSettings() {
+        async function loadSettings() {
 
-    const res = await fetch('/api/settings')
+            const res = await fetch('/api/settings')
 
-    const data = await res.json()
+            const data = await res.json()
 
-    const aiMode = data.find(
-      (item: any) => item.key === "ai_mode"
-    )
+            const aiMode = data.find(
+                (item: any) => item.key === "ai_mode"
+            )
 
-    if (aiMode) {
-      setSelectedMode(aiMode.value)
+            if (aiMode) {
+                setSelectedMode(aiMode.value)
+            }
+            const savedReplyFrequency = data.find(
+                (item: any) => item.key === 'reply_frequency'
+            )
+
+            if (savedReplyFrequency) {
+                setReplyFrequency(savedReplyFrequency.value)
+            }
+        }
+
+        loadSettings()
+
+    }, [])
+
+    async function saveAiMode(mode: string) {
+        console.log("saveAiMode", mode)
+        setSelectedMode(mode)
+
+        const res = await fetch('/api/settings', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                aiMode: mode,
+            }),
+        })
+
+        if (!res.ok) {
+            alert('AIモードの保存に失敗しました')
+        }
+
+    }
+    async function saveReplyFrequency(frequency: string) {
+        setReplyFrequency(frequency)
+
+        const res = await fetch('/api/settings', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                replyFrequency: frequency,
+            }),
+        })
+
+        if (!res.ok) {
+            alert('返信頻度の保存に失敗しました')
+        }
     }
 
-  }
-
-  loadSettings()
-
-}, [])
-
-async function saveAiMode(mode: string) {
-console.log("saveAiMode", mode)
-  setSelectedMode(mode)
-
-  const res = await fetch('/api/settings', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      aiMode: mode,
-    }),
-  })
-
-  if (!res.ok) {
-    alert('AIモードの保存に失敗しました')
-  }
-
-}
-
-async function createAIPost() {
+    async function createAIPost() {
 
         const res = await fetch('/api/ai-post', {
             method: 'POST',
@@ -109,7 +133,7 @@ async function createAIPost() {
                             name="ai-mode"
                             value={mode.id}
                             checked={selectedMode === mode.id}
-                           onChange={() => saveAiMode(mode.id)}
+                            onChange={() => saveAiMode(mode.id)}
                         />
 
                         {' '}
@@ -118,8 +142,52 @@ async function createAIPost() {
                     </label>
                 ))}
             </div>
+            <h2>💬 AI返信頻度</h2>
+
+            <div
+                style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 10,
+                    marginBottom: 30,
+                }}
+            >
+                <label>
+                    <input
+                        type="radio"
+                        name="reply-frequency"
+                        checked={replyFrequency === 'always'}
+                        onChange={() => saveReplyFrequency('always')}
+                    />
+                    {' '}
+                    毎回返信
+                </label>
+
+                <label>
+                    <input
+                        type="radio"
+                        name="reply-frequency"
+                        checked={replyFrequency === 'every_3'}
+                        onChange={() => saveReplyFrequency('every_3')}
+                    />
+                    {' '}
+                    3件に1回返信
+                </label>
+
+                <label>
+                    <input
+                        type="radio"
+                        name="reply-frequency"
+                        checked={replyFrequency === 'every_5'}
+                        onChange={() => saveReplyFrequency('every_5')}
+                    />
+                    {' '}
+                    5件に1回返信
+                </label>
+            </div>
 
             <hr />
+           
 
             <h2>📖 今日の授業内容</h2>
 

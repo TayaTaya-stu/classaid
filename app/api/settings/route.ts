@@ -21,14 +21,20 @@ export async function GET() {
 // 設定を更新
 export async function POST(request: Request) {
 
-  const { aiMode } = await request.json();
+  const { aiMode, replyFrequency } = await request.json();
 
- const { data, error } = await supabase
+const settingKey = replyFrequency
+  ? "reply_frequency"
+  : "ai_mode";
+
+const settingValue = replyFrequency ?? aiMode;
+
+const { data, error } = await supabase
   .from("settings")
   .update({
-    value: aiMode,
+    value: settingValue,
   })
-  .eq("key", "ai_mode")
+  .eq("key", settingKey)
   .select();
 
 console.log("更新結果:", data);

@@ -27,19 +27,18 @@ export async function POST() {
 
     // 新しい順で取得した投稿を、古い順に並べ直して文章にする
     const conversation =
-  recentPosts && recentPosts.length > 0
-    ? recentPosts
-        .reverse()
-        .map((post) => `${post.name}: ${post.message}`)
-        .join("\n")
-    : "まだ学生の投稿はありません。";
+      recentPosts && recentPosts.length > 0
+        ? recentPosts
+          .reverse()
+          .map((post) => `${post.name}: ${post.message}`)
+          .join("\n")
+        : "まだ学生の投稿はありません。";
 
-    // 管理者ページで選択されたAIモードを取得
-    const { data: setting, error: settingError } = await supabase
+    // 管理者ページで選択されたAIモードと返信頻度を取得
+    const { data: settings, error: settingError } = await supabase
       .from("settings")
-      .select("value")
-      .eq("key", "ai_mode")
-      .single();
+      .select("key, value")
+      .in("key", ["ai_mode", "reply_frequency"]);
 
     if (settingError) {
       console.error("AIモード取得エラー:", settingError);
@@ -51,11 +50,30 @@ export async function POST() {
     }
 
     // AIモードが正しい値なら使用し、不正な場合はempathyにする
-    const aiMode =
-      setting?.value && setting.value in AI_PROMPTS
-        ? (setting.value as keyof typeof AI_PROMPTS)
-        : "empathy";
+  const aiModeSetting = settings?.find(
+  (item) => item.key === "ai_mode"
+);
 
+const replyFrequencySetting = settings?.find(
+  (item) => item.key === "reply_frequency"
+);
+
+const aiMode =
+  aiModeSetting?.value &&
+  aiModeSetting.value in AI_PROMPTS
+    ? (aiModeSetting.value as keyof typeof AI_PROMPTS)
+    : "empathy";
+
+const replyFrequency =
+  replyFrequencySetting?.value ?? "always";
+
+  const replyInterval =
+  replyFrequency === "every_3"
+    ? 3
+    : replyFrequency === "every_5"
+      ? 5
+      : 1;
+      
     const selectedPrompt = AI_PROMPTS[aiMode];
 
     // Geminiに授業内容、最近の投稿、選択された性格を渡す
@@ -94,22 +112,22 @@ ${conversation}
     }
 
     const aiNames = [
-  '10代以下学部生',
-  '20代学部生',
-]
+      '10代以下学部生',
+      '20代学部生',
+    ]
 
-const aiName =
-  aiNames[Math.floor(Math.random() * aiNames.length)]
+    const aiName =
+      aiNames[Math.floor(Math.random() * aiNames.length)]
 
-const { error: insertError } = await supabase
-  .from('posts')
-  .insert({
-    name: aiName,
-    message: aiMessage,
-    likes: 0,
-    dislikes: 0,
-    is_ai: true,
-  })
+    const { error: insertError } = await supabase
+      .from('posts')
+      .insert({
+        name: aiName,
+        message: aiMessage,
+        likes: 0,
+        dislikes: 0,
+        is_ai: true,
+      })
 
     if (insertError) {
       console.error("AI投稿保存エラー:", insertError);

@@ -143,6 +143,57 @@ export default function Home() {
 
     setMessage('')
     await loadPosts()
+    const { data: frequencySetting, error: frequencyError } =
+      await supabase
+        .from('settings')
+        .select('value')
+        .eq('key', 'reply_frequency')
+        .single()
+
+    if (frequencyError) {
+      console.error(
+        '返信頻度の取得エラー:',
+        frequencyError
+      )
+      return
+    }
+
+    const replyInterval =
+      frequencySetting?.value === 'every_3'
+        ? 3
+        : frequencySetting?.value === 'every_5'
+          ? 5
+          : 1
+
+    const { data: recentPosts, error: recentPostsError } =
+      await supabase
+        .from('posts')
+        .select('is_ai')
+        .order('created_at', { ascending: false })
+
+    if (recentPostsError) {
+      console.error(
+        '投稿履歴の取得エラー:',
+        recentPostsError
+      )
+      return
+    }
+
+    let consecutiveStudentPosts = 0
+
+for (const post of recentPosts ?? []) {
+  if (post.is_ai) {
+    break
+  }
+
+  consecutiveStudentPosts++
+}
+
+if (
+  consecutiveStudentPosts % replyInterval !== 0
+) {
+  return
+}
 
     setTimeout(async () => {
       try {
@@ -172,13 +223,13 @@ export default function Home() {
     const currentVote = votedPosts[post.id]
 
     const {
-  data: { user },
-} = await supabase.auth.getUser()
+      data: { user },
+    } = await supabase.auth.getUser()
 
-if (!user) {
-  console.error('ユーザー情報を取得できません')
-  return
-}
+    if (!user) {
+      console.error('ユーザー情報を取得できません')
+      return
+    }
     let newLikes = post.likes ?? 0
     let newDislikes = post.dislikes ?? 0
     let nextVote: VoteType | undefined
@@ -249,67 +300,67 @@ if (!user) {
       return next
     })
 
-let error = null
+    let error = null
 
-if (field === 'likes') {
-  if (currentVote === 'likes') {
-    const result = await supabase
-      .from('post_likes')
-      .delete()
-      .eq('post_id', post.id)
-      .eq('user_id', user.id)
+    if (field === 'likes') {
+      if (currentVote === 'likes') {
+        const result = await supabase
+          .from('post_likes')
+          .delete()
+          .eq('post_id', post.id)
+          .eq('user_id', user.id)
 
-    error = result.error
-  } else {
-    const result = await supabase
-      .from('post_likes')
-      .insert({
-        post_id: post.id,
-        user_id: user.id,
-      })
+        error = result.error
+      } else {
+        const result = await supabase
+          .from('post_likes')
+          .insert({
+            post_id: post.id,
+            user_id: user.id,
+          })
 
-    error = result.error
-  }
+        error = result.error
+      }
 
-  if (!error && currentVote === 'dislikes') {
-    const result = await supabase
-      .from('posts')
-      .update({
-        dislikes: newDislikes,
-      })
-      .eq('id', post.id)
+      if (!error && currentVote === 'dislikes') {
+        const result = await supabase
+          .from('posts')
+          .update({
+            dislikes: newDislikes,
+          })
+          .eq('id', post.id)
 
-    error = result.error
-  }
-} else {
-  if (currentVote === 'likes') {
-    const result = await supabase
-      .from('post_likes')
-      .delete()
-      .eq('post_id', post.id)
-      .eq('user_id', user.id)
+        error = result.error
+      }
+    } else {
+      if (currentVote === 'likes') {
+        const result = await supabase
+          .from('post_likes')
+          .delete()
+          .eq('post_id', post.id)
+          .eq('user_id', user.id)
 
-    error = result.error
-  }
+        error = result.error
+      }
 
-  if (!error) {
-    const result = await supabase
-      .from('posts')
-      .update({
-        dislikes: newDislikes,
-      })
-      .eq('id', post.id)
+      if (!error) {
+        const result = await supabase
+          .from('posts')
+          .update({
+            dislikes: newDislikes,
+          })
+          .eq('id', post.id)
 
-    error = result.error
-  }
-}
+        error = result.error
+      }
+    }
 
-if (error) {
-  console.error('リアクション更新エラー:', error)
-  await loadPosts()
-  return
-}
- await loadPosts()
+    if (error) {
+      console.error('リアクション更新エラー:', error)
+      await loadPosts()
+      return
+    }
+    await loadPosts()
   }
 
   return (
@@ -559,12 +610,12 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
   },
 
-selectedReaction: {
-  background: '#dbeafe',
-  border: '1px solid #93c5fd',
-  color: '#1d4ed8',
-  fontWeight: 600,
-},
+  selectedReaction: {
+    background: '#dbeafe',
+    border: '1px solid #93c5fd',
+    color: '#1d4ed8',
+    fontWeight: 600,
+  },
 
   inputBar: {
     display: 'flex',
