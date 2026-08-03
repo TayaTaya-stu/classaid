@@ -409,11 +409,8 @@ export default function Home() {
                   {post.name}
                 </div>
 
-                {post.is_ai && (
-                  <span style={styles.aiLabel}>
-                    AI
-                  </span>
-                )}
+                
+                
               </div>
 
               <div style={styles.message}>
