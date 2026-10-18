@@ -395,6 +395,7 @@ export async function POST(request: Request) {
     try {
       sessionToken = createSessionToken({
         participantId,
+        authUserId,
         sessionId: session.id,
         roomId: room.id,
         roomSlug: room.room_slug,

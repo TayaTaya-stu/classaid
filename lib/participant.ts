@@ -43,6 +43,7 @@ export function generateIdentityHash(normalizedId: string): string {
 
 export type ParticipantSessionPayload = {
   participantId: string
+  authUserId: string
   sessionId: string
   roomId: string
   roomSlug: string
@@ -53,6 +54,8 @@ export type ParticipantSessionPayload = {
 
 // セッショントークンの有効期限: 12時間
 export const SESSION_TOKEN_MAX_AGE_SECONDS = 12 * 60 * 60
+
+const UUID_REGEX = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
 
 /**
  * 改ざん防止用：サーバー側で検証可能なセッショントークンを生成
@@ -125,10 +128,20 @@ export function verifySessionToken(token: string): ParticipantSessionPayload | n
     // 各フィールドの型と空文字チェック
     if (!payload || typeof payload !== 'object') return null
 
-    const { participantId, sessionId, roomId, roomSlug, displayName, issuedAt, expiresAt } = payload
+    const {
+      participantId,
+      authUserId,
+      sessionId,
+      roomId,
+      roomSlug,
+      displayName,
+      issuedAt,
+      expiresAt,
+    } = payload
 
     if (
       typeof participantId !== 'string' || participantId.trim().length === 0 ||
+      typeof authUserId !== 'string' || !UUID_REGEX.test(authUserId.trim()) ||
       typeof sessionId !== 'string' || sessionId.trim().length === 0 ||
       typeof roomId !== 'string' || roomId.trim().length === 0 ||
       typeof roomSlug !== 'string' || roomSlug.trim().length === 0 ||

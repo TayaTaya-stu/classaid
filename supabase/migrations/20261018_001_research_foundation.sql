@@ -518,6 +518,45 @@ $$;
 REVOKE ALL ON FUNCTION assign_or_get_participant(TEXT, UUID) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION assign_or_get_participant(TEXT, UUID) TO service_role;
 
+-- ==============================================================================
+-- 11. 研究用チャット運用に向けた RLS ポリシーの調整
+-- ==============================================================================
+-- 【理由】
+-- 研究用チャットでは、投稿取得・新規投稿・いいねトグルはすべてサーバーサイドAPI
+-- (service_role 権限の Next.js Route Handlers) 経由で検証・実行されます。
+-- 学生がクライアント側 Supabase Client から直接テーブルを操作して他ルームの投稿を
+-- 閲覧・改ざんすることを防ぐため、既存のパブリック直接操作ポリシーを安全に整理します。
+-- ※ settings テーブルの既存ポリシーは変更しません。
+-- ※ DROP POLICY IF EXISTS のみを使用し、データやテーブルは一切削除しません。
+
+ALTER TABLE posts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE post_likes ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow public read access" ON posts;
+DROP POLICY IF EXISTS "Allow public insert access" ON posts;
+DROP POLICY IF EXISTS "Allow public update access" ON posts;
+DROP POLICY IF EXISTS "Enable read access for all users" ON posts;
+DROP POLICY IF EXISTS "Enable insert for all users" ON posts;
+DROP POLICY IF EXISTS "Enable update for all users" ON posts;
+DROP POLICY IF EXISTS "Public posts are viewable by everyone" ON posts;
+DROP POLICY IF EXISTS "Anyone can create posts" ON posts;
+-- 現在実在するポリシー名
+DROP POLICY IF EXISTS "Enable insert access for all users" ON posts;
+DROP POLICY IF EXISTS "allow_update" ON posts;
+
+DROP POLICY IF EXISTS "Allow public read access" ON post_likes;
+DROP POLICY IF EXISTS "Allow public insert access" ON post_likes;
+DROP POLICY IF EXISTS "Allow public delete access" ON post_likes;
+DROP POLICY IF EXISTS "Enable read access for all users" ON post_likes;
+DROP POLICY IF EXISTS "Enable insert for all users" ON post_likes;
+DROP POLICY IF EXISTS "Enable delete for all users" ON post_likes;
+DROP POLICY IF EXISTS "Public likes are viewable by everyone" ON post_likes;
+DROP POLICY IF EXISTS "Anyone can create likes" ON post_likes;
+-- 現在実在するポリシー名
+DROP POLICY IF EXISTS "Authenticated users can read likes" ON post_likes;
+DROP POLICY IF EXISTS "Users can delete their own likes" ON post_likes;
+DROP POLICY IF EXISTS "Users can insert their own likes" ON post_likes;
+
 COMMIT;
 
 -- ==============================================================================
