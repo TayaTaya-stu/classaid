@@ -95,6 +95,7 @@ export async function GET(_request: Request, context: RouteContext) {
       currentUser: {
         displayName: participant.displayName,
       },
+      roomLabel: room.groupLabel,
     })
   } catch {
     return NextResponse.json(

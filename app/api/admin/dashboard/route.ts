@@ -58,27 +58,7 @@ export async function GET(request: Request) {
     }
   }
 
-  const { data: posts, error: postsError } = await supabaseAdmin
-    .from('posts')
-    .select('id, room_id, author_display_name, author_type, is_ai, message, audience_type, created_at')
-    .eq('session_id', selectedSession.id).eq('is_deleted', false)
-    .order('created_at', { ascending: false }).order('id', { ascending: false }).limit(300)
-  if (postsError) return NextResponse.json({ error: '投稿の取得に失敗しました。' }, { status: 500 })
-
   const roomLabelById = new Map((rooms || []).map((room) => [room.id, room.group_label]))
-  const safePosts = (posts || []).map((post) => {
-    const isAi = post.author_type === 'ai' || post.is_ai === true
-    return {
-      id: post.id,
-      roomId: post.room_id,
-      roomLabel: roomLabelById.get(post.room_id) || '?',
-      authorDisplayName: isAi ? '学生AI' : post.author_display_name,
-      authorType: isAi ? ('ai' as const) : ('human' as const),
-      message: post.message,
-      audienceType: post.audience_type === 'teacher' ? ('teacher' as const) : ('room' as const),
-      createdAt: post.created_at,
-    }
-  })
 
   return NextResponse.json({
     sessions: (sessions || []).map((session) => ({
@@ -130,8 +110,6 @@ export async function GET(request: Request) {
     rooms: (rooms || []).map((room) => ({
       id: room.id,
       groupLabel: room.group_label,
-      posts: safePosts.filter((post) => post.roomId === room.id).slice().reverse(),
     })),
-    teacherPosts: safePosts.filter((post) => post.audienceType === 'teacher').slice(0, 100),
   })
 }

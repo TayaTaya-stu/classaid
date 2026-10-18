@@ -43,6 +43,7 @@ export default function AdminSessionControl({ sessionId, control, onUpdated }: P
   const [now, setNow] = useState<number | null>(null)
   const [selectedCandidates, setSelectedCandidates] = useState<Record<string, number>>({})
   const [editedMessages, setEditedMessages] = useState<Record<string, string>>({})
+  const actionButton = { padding: '9px 13px', border: '1px solid #7890a7', borderRadius: 8, background: '#fff', color: '#17324d', fontWeight: 700, cursor: 'pointer' } as const
 
   useEffect(() => {
     const updateClock = () => setNow(Date.now())
@@ -150,7 +151,7 @@ export default function AdminSessionControl({ sessionId, control, onUpdated }: P
           <strong>授業PDF</strong>
           <p style={{ fontSize: 13, overflowWrap: 'anywhere' }}>{control.pdfFilePath ? `登録済み：${control.pdfFilePath.split('/').pop()}` : '未登録'}</p>
           <input type="file" accept="application/pdf,.pdf" onChange={(event) => setPdf(event.target.files?.[0] || null)} disabled={control.isLocked} />
-          <button type="submit" disabled={!pdf || Boolean(busy) || control.isLocked} style={{ display: 'block', marginTop: 10, padding: '8px 12px' }}>
+          <button type="submit" disabled={!pdf || Boolean(busy) || control.isLocked} style={{ ...actionButton, display: 'block', marginTop: 10 }}>
             {busy === 'pdf' ? '登録中…' : 'PDFを登録'}
           </button>
         </form>
@@ -159,7 +160,7 @@ export default function AdminSessionControl({ sessionId, control, onUpdated }: P
           <strong>現在の授業ページ</strong>
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
             <input type="number" min={1} max={9999} value={page} onChange={(event) => setPage(event.target.value)} style={{ width: 90, padding: 8 }} />
-            <button onClick={savePage} disabled={Boolean(busy) || control.isLocked} style={{ padding: '8px 12px' }}>{busy === 'page' ? '更新中…' : '更新'}</button>
+            <button onClick={savePage} disabled={Boolean(busy) || control.isLocked} style={actionButton}>{busy === 'page' ? '更新中…' : '更新'}</button>
           </div>
         </div>
 
@@ -168,7 +169,7 @@ export default function AdminSessionControl({ sessionId, control, onUpdated }: P
           <p>{control.interventionStartedAt ? `開始：${formatClock(control.interventionStartedAt)}` : '未開始'}</p>
           {control.interventionStartedAt
             ? <p>経過 約{Math.floor(elapsedMinutes)}分／現在サイクル {currentCycle}</p>
-            : <button onClick={startProtocol} disabled={Boolean(busy) || control.isLocked} style={{ padding: '10px 14px', fontWeight: 700 }}>{busy === 'start' ? '開始中…' : '20分×3サイクルを開始'}</button>}
+            : <button onClick={startProtocol} disabled={Boolean(busy) || control.isLocked} style={{ ...actionButton, background: '#265e3d', color: '#fff' }}>{busy === 'start' ? '開始中…' : '20分×3サイクルを開始'}</button>}
         </div>
       </div>
 
@@ -188,7 +189,7 @@ export default function AdminSessionControl({ sessionId, control, onUpdated }: P
                       <span>{slot.plannedMessageType}</span>
                       <span>{slot.status}</span>
                       {slot.status !== 'posted' && (
-                        <button onClick={() => void generate(slot.id)} disabled={Boolean(busy)}>
+                        <button onClick={() => void generate(slot.id)} disabled={Boolean(busy)} style={actionButton}>
                           {busy === `generate:${slot.id}` ? '生成中…' : slot.latestAttempt ? '再生成' : '候補を生成'}
                         </button>
                       )}
@@ -215,7 +216,7 @@ export default function AdminSessionControl({ sessionId, control, onUpdated }: P
                           onChange={(event) => setEditedMessages((current) => ({ ...current, [slot.id]: event.target.value }))}
                           style={{ width: '100%', minHeight: 58, padding: 8 }}
                         />
-                        <button onClick={() => void approve(slot)} disabled={Boolean(busy)} style={{ justifySelf: 'start', padding: '8px 12px', fontWeight: 700 }}>
+                        <button onClick={() => void approve(slot)} disabled={Boolean(busy)} style={{ ...actionButton, justifySelf: 'start', background: '#214f7b', color: '#fff' }}>
                           {busy === `approve:${slot.id}` ? '投稿中…' : '選択した候補を承認・投稿'}
                         </button>
                       </div>

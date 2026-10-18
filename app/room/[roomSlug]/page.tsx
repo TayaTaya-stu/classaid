@@ -24,6 +24,7 @@ export default function RoomChatPage() {
 
   const [posts, setPosts] = useState<PostItem[]>([])
   const [displayName, setDisplayName] = useState<string>('')
+  const [roomLabel, setRoomLabel] = useState<string>('')
   const [isSessionLocked, setIsSessionLocked] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isSending, setIsSending] = useState(false)
@@ -67,6 +68,7 @@ export default function RoomChatPage() {
       if (data.currentUser?.displayName) {
         setDisplayName(data.currentUser.displayName)
       }
+      if (typeof data.roomLabel === 'string') setRoomLabel(data.roomLabel)
       setIsLoading(false)
 
       // 初回のみ最下部へスクロール
@@ -227,6 +229,7 @@ export default function RoomChatPage() {
           <div className="min-w-0">
             <h1 className="text-sm font-bold text-slate-900 truncate">講義タイムライン</h1>
             <div className="flex items-center gap-2 text-[11px] text-slate-500">
+              {roomLabel && <span className="font-semibold text-slate-700">参加中：ルーム{roomLabel}</span>}
               <span>
                 表示名: <strong className="text-blue-700 font-semibold">{displayName || '参加者'}</strong>
               </span>

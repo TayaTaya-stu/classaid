@@ -13,6 +13,7 @@ export type VerifiedRoomAccess = {
   room: {
     id: string
     roomSlug: string
+    groupLabel: string
   }
   participant: {
     id: string
@@ -54,7 +55,7 @@ export async function verifyRoomAccess(roomSlug: string): Promise<VerifiedRoomAc
     // 1. DB 上で session, room の実在と整合性を確認
     const { data: room, error: roomError } = await supabaseAdmin
       .from('rooms')
-      .select('id, session_id, room_slug')
+      .select('id, session_id, room_slug, group_label')
       .eq('id', payload.roomId)
       .eq('room_slug', roomSlug.trim())
       .maybeSingle()
@@ -109,6 +110,7 @@ export async function verifyRoomAccess(roomSlug: string): Promise<VerifiedRoomAc
       room: {
         id: room.id,
         roomSlug: room.room_slug,
+        groupLabel: room.group_label,
       },
       participant: {
         id: payload.participantId,
