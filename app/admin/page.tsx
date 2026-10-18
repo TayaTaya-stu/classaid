@@ -4,7 +4,7 @@ import { type FormEvent, useCallback, useEffect, useState } from 'react'
 import AdminSessionControl, { type SessionControlData } from './AdminSessionControl'
 
 type SessionSummary = { id: string; sessionNumber: number; scheduledAt: string; isDevelopment: boolean }
-type RoomSummary = { id: string; groupLabel: string }
+type RoomSummary = { id: string; groupLabel: string; aiCondition: 'none' | 'standard' | 'damekko' }
 type DashboardData = { sessions: SessionSummary[]; selectedSessionId: string | null; rooms: RoomSummary[]; sessionControl: SessionControlData | null }
 
 const buttonStyle = { padding: '10px 15px', border: '1px solid #7890a7', borderRadius: 9, background: '#fff', color: '#17324d', fontWeight: 700, cursor: 'pointer' } as const
@@ -14,6 +14,11 @@ function formatDateTime(value: string) {
 }
 function sessionLabel(session: SessionSummary) {
   return `${session.isDevelopment ? '開発テスト' : `第${session.sessionNumber}回`}（${formatDateTime(session.scheduledAt)}）`
+}
+function conditionLabel(condition: RoomSummary['aiCondition']) {
+  if (condition === 'standard') return '標準AI'
+  if (condition === 'damekko') return 'ダメっこAI'
+  return 'AIなし'
 }
 
 export default function AdminPage() {
@@ -94,7 +99,7 @@ export default function AdminPage() {
         <h2 style={{ marginTop: 0 }}>ルーム閲覧</h2>
         <p style={{ color: '#536273' }}>必要なルームだけ別タブで開きます。閲覧専用のため、実験者の投稿はできません。</p>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          {(dashboard?.rooms || []).map((room) => <a key={room.id} href={`/admin/room/${room.id}`} target="_blank" rel="noreferrer" style={{ ...buttonStyle, textDecoration: 'none' }}>ルーム{room.groupLabel}を開く</a>)}
+          {(dashboard?.rooms || []).map((room) => <a key={room.id} href={`/admin/room/${room.id}`} target="_blank" rel="noreferrer" style={{ ...buttonStyle, display: 'inline-grid', gap: 2, textDecoration: 'none' }}><span>ルーム{room.groupLabel}を開く</span><small style={{ fontWeight: 500, color: '#65778a' }}>{conditionLabel(room.aiCondition)}</small></a>)}
         </div>
       </section>
       {dashboard?.sessionControl && selectedSessionId && <AdminSessionControl key={selectedSessionId} sessionId={selectedSessionId} control={dashboard.sessionControl} onUpdated={() => loadDashboard(selectedSessionId)} />}

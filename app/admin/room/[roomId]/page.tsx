@@ -4,7 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 
 type MonitorPost = { id: number; authorDisplayName: string; authorType: 'human' | 'ai'; message: string; audienceType: 'room' | 'teacher'; createdAt: string }
-type MonitorData = { roomLabel: string; posts: MonitorPost[] }
+type MonitorData = { roomLabel: string; aiCondition: 'none' | 'standard' | 'damekko'; posts: MonitorPost[] }
+function conditionLabel(condition: MonitorData['aiCondition']) { return condition === 'standard' ? '標準AI' : condition === 'damekko' ? 'ダメっこAI' : 'AIなし' }
 function clock(value: string) { return new Intl.DateTimeFormat('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date(value)) }
 
 export default function AdminRoomMonitorPage() {
@@ -33,7 +34,7 @@ export default function AdminRoomMonitorPage() {
   return (
     <main style={{ minHeight: '100vh', padding: 20, background: '#eef3f7', color: '#17212b', fontFamily: 'sans-serif' }}>
       <header style={{ position: 'sticky', top: 0, zIndex: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '14px 16px', marginBottom: 14, border: '1px solid #c7d3df', borderRadius: 12, background: '#fff' }}>
-        <div><h1 style={{ margin: 0, fontSize: 24 }}>ルーム{data?.roomLabel || '…'}・閲覧専用</h1><span style={{ color: '#536273', fontSize: 13 }}>実験者の投稿操作はできません。</span></div>
+        <div><h1 style={{ margin: 0, fontSize: 24 }}>ルーム{data?.roomLabel || '…'}・閲覧専用</h1><span style={{ color: '#536273', fontSize: 13 }}>{data ? `${conditionLabel(data.aiCondition)}／` : ''}実験者の投稿操作はできません。</span></div>
         <div style={{ display: 'flex', gap: 8 }}><button onClick={() => setPaused((value) => !value)} style={{ padding: '9px 13px', border: '1px solid #7890a7', borderRadius: 8, background: paused ? '#fff1c9' : '#fff', fontWeight: 700 }}>{paused ? '自動更新を再開' : '自動更新を一時停止'}</button><button onClick={() => void load()} style={{ padding: '9px 13px', border: '1px solid #7890a7', borderRadius: 8, background: '#fff', fontWeight: 700 }}>更新</button></div>
       </header>
       {error && <p role="alert" style={{ color: '#b42318' }}>{error}</p>}

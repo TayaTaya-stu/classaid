@@ -17,6 +17,7 @@ export type SessionControlData = {
     cycleId: string
     roomId: string
     roomLabel: string
+    aiCondition: 'none' | 'standard' | 'damekko'
     slotIndex: number
     scheduledAt: string
     status: string
@@ -33,6 +34,12 @@ type Props = {
 
 function formatClock(value: string) {
   return new Intl.DateTimeFormat('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date(value))
+}
+
+function conditionLabel(condition: 'none' | 'standard' | 'damekko') {
+  if (condition === 'standard') return '標準AI'
+  if (condition === 'damekko') return 'ダメっこAI'
+  return 'AIなし'
 }
 
 export default function AdminSessionControl({ sessionId, control, onUpdated }: Props) {
@@ -287,6 +294,9 @@ export default function AdminSessionControl({ sessionId, control, onUpdated }: P
                   <div key={slot.id} style={{ padding: 10, borderRadius: 10, background: slot.status === 'posted' ? '#d8f2dc' : '#e8edf3', fontSize: 13 }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                       <strong>ルーム{slot.roomLabel}・枠{slot.slotIndex}</strong>
+                      <span style={{ padding: '3px 8px', borderRadius: 999, background: slot.aiCondition === 'damekko' ? '#f4ddff' : '#dceafe', color: slot.aiCondition === 'damekko' ? '#70268f' : '#214f7b', fontWeight: 800 }}>
+                        {conditionLabel(slot.aiCondition)}
+                      </span>
                       <span>{formatClock(slot.scheduledAt)}</span>
                       <span>{slot.plannedMessageType}</span>
                       <span>{slot.status}</span>

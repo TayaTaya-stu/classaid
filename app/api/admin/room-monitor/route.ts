@@ -10,7 +10,7 @@ export async function GET(request: Request) {
   if (!roomId || !UUID_REGEX.test(roomId)) return NextResponse.json({ error: 'ルーム指定が不正です。' }, { status: 400 })
 
   const { data: room, error: roomError } = await supabaseAdmin.from('rooms')
-    .select('id, session_id, group_label').eq('id', roomId).maybeSingle()
+    .select('id, session_id, group_label, ai_condition').eq('id', roomId).maybeSingle()
   if (roomError || !room) return NextResponse.json({ error: 'ルームが見つかりません。' }, { status: 404 })
 
   const { data: posts, error: postsError } = await supabaseAdmin.from('posts')
@@ -21,6 +21,7 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     roomLabel: room.group_label,
+    aiCondition: room.ai_condition,
     posts: (posts || []).slice().reverse().map((post) => {
       const isAi = post.author_type === 'ai' || post.is_ai === true
       return {

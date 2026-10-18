@@ -28,7 +28,7 @@ export async function GET(request: Request) {
   }
 
   const { data: rooms, error: roomsError } = await supabaseAdmin
-    .from('rooms').select('id, group_label').eq('session_id', selectedSession.id).order('group_label')
+    .from('rooms').select('id, group_label, ai_condition').eq('session_id', selectedSession.id).order('group_label')
   if (roomsError) return NextResponse.json({ error: 'ルーム情報の取得に失敗しました。' }, { status: 500 })
 
   const { data: cycles, error: cyclesError } = await supabaseAdmin
@@ -59,6 +59,7 @@ export async function GET(request: Request) {
   }
 
   const roomLabelById = new Map((rooms || []).map((room) => [room.id, room.group_label]))
+  const roomConditionById = new Map((rooms || []).map((room) => [room.id, room.ai_condition]))
 
   return NextResponse.json({
     sessions: (sessions || []).map((session) => ({
@@ -95,6 +96,7 @@ export async function GET(request: Request) {
           cycleId: item.cycle_id,
           roomId: item.room_id,
           roomLabel: roomLabelById.get(item.room_id) || '?',
+          aiCondition: roomConditionById.get(item.room_id) || 'none',
           slotIndex: item.slot_index,
           scheduledAt: item.scheduled_at,
           status: item.status,
@@ -110,6 +112,7 @@ export async function GET(request: Request) {
     rooms: (rooms || []).map((room) => ({
       id: room.id,
       groupLabel: room.group_label,
+      aiCondition: room.ai_condition,
     })),
   })
 }
