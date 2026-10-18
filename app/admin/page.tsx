@@ -1,6 +1,7 @@
 'use client'
 
 import { type FormEvent, useCallback, useEffect, useState } from 'react'
+import AdminSessionControl, { type SessionControlData } from './AdminSessionControl'
 
 type SessionSummary = {
   id: string
@@ -34,6 +35,7 @@ type DashboardData = {
   selectedSessionId: string | null
   rooms: RoomFeed[]
   teacherPosts: AdminPost[]
+  sessionControl: SessionControlData
 }
 
 function formatDateTime(value: string) {
@@ -202,6 +204,15 @@ export default function AdminPage() {
       </section>
 
       {loadError && <p role="alert" style={{ color: '#b42318' }}>{loadError}</p>}
+
+      {dashboard?.sessionControl && selectedSessionId && (
+        <AdminSessionControl
+          key={selectedSessionId}
+          sessionId={selectedSessionId}
+          control={dashboard.sessionControl}
+          onUpdated={() => loadDashboard(selectedSessionId)}
+        />
+      )}
 
       <section style={{ marginBottom: 24, padding: 18, border: '1px solid #e7bd63', borderRadius: 14, background: '#fff8e7' }}>
         <h2 style={{ marginTop: 0 }}>先生への質問・感想</h2>
