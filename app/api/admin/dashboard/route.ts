@@ -12,6 +12,7 @@ export async function GET(request: Request) {
   const { data: sessions, error: sessionsError } = await supabaseAdmin
     .from('sessions')
     .select('id, session_number, wave_number, scheduled_at, status, is_locked, protocol_snapshot, pdf_file_url, current_page, intervention_started_at, cycle_count, cycle_duration_minutes, slot_minutes')
+    .neq('id', '00000000-0000-0000-0000-000000000001')
     .order('scheduled_at', { ascending: false })
   if (sessionsError) return NextResponse.json({ error: '授業回の取得に失敗しました。' }, { status: 500 })
 
@@ -42,6 +43,20 @@ export async function GET(request: Request) {
       .in('cycle_id', cycleIds).order('scheduled_at')
     : { data: [], error: null }
   if (interventionsError) return NextResponse.json({ error: '介入予定の取得に失敗しました。' }, { status: 500 })
+
+  const interventionIds = (interventions || []).map((item) => item.id)
+  const { data: generationAttempts, error: attemptsError } = interventionIds.length
+    ? await supabaseAdmin.from('ai_generation_attempts')
+      .select('id, intervention_id, attempt_index, candidate_messages, created_at')
+      .in('intervention_id', interventionIds).order('attempt_index', { ascending: false })
+    : { data: [], error: null }
+  if (attemptsError) return NextResponse.json({ error: 'AI候補の取得に失敗しました。' }, { status: 500 })
+  const latestAttemptByIntervention = new Map<string, { id: string; attempt_index: number; candidate_messages: unknown }>()
+  for (const attempt of generationAttempts || []) {
+    if (!latestAttemptByIntervention.has(attempt.intervention_id)) {
+      latestAttemptByIntervention.set(attempt.intervention_id, attempt)
+    }
+  }
 
   const { data: posts, error: postsError } = await supabaseAdmin
     .from('posts')
@@ -93,16 +108,24 @@ export async function GET(request: Request) {
         startedAt: cycle.started_at,
         endedAt: cycle.ended_at,
       })),
-      interventions: (interventions || []).map((item) => ({
-        id: item.id,
-        cycleId: item.cycle_id,
-        roomId: item.room_id,
-        roomLabel: roomLabelById.get(item.room_id) || '?',
-        slotIndex: item.slot_index,
-        scheduledAt: item.scheduled_at,
-        status: item.status,
-        plannedMessageType: item.planned_message_type,
-      })),
+      interventions: (interventions || []).map((item) => {
+        const latestAttempt = latestAttemptByIntervention.get(item.id)
+        return {
+          id: item.id,
+          cycleId: item.cycle_id,
+          roomId: item.room_id,
+          roomLabel: roomLabelById.get(item.room_id) || '?',
+          slotIndex: item.slot_index,
+          scheduledAt: item.scheduled_at,
+          status: item.status,
+          plannedMessageType: item.planned_message_type,
+          latestAttempt: latestAttempt ? {
+            id: latestAttempt.id,
+            attemptIndex: latestAttempt.attempt_index,
+            candidates: Array.isArray(latestAttempt.candidate_messages) ? latestAttempt.candidate_messages : [],
+          } : null,
+        }
+      }),
     },
     rooms: (rooms || []).map((room) => ({
       id: room.id,

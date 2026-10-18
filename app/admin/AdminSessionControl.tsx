@@ -21,6 +21,7 @@ export type SessionControlData = {
     scheduledAt: string
     status: string
     plannedMessageType: string | null
+    latestAttempt: { id: string; attemptIndex: number; candidates: string[] } | null
   }>
 }
 
@@ -40,6 +41,8 @@ export default function AdminSessionControl({ sessionId, control, onUpdated }: P
   const [busy, setBusy] = useState('')
   const [message, setMessage] = useState('')
   const [now, setNow] = useState<number | null>(null)
+  const [selectedCandidates, setSelectedCandidates] = useState<Record<string, number>>({})
+  const [editedMessages, setEditedMessages] = useState<Record<string, string>>({})
 
   useEffect(() => {
     const updateClock = () => setNow(Date.now())
@@ -100,6 +103,38 @@ export default function AdminSessionControl({ sessionId, control, onUpdated }: P
     finally { setBusy('') }
   }
 
+  async function generate(interventionId: string) {
+    setBusy(`generate:${interventionId}`); setMessage('')
+    try {
+      const response = await fetch('/api/admin/interventions/generate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ interventionId }),
+      })
+      const data = (await response.json()) as { error?: string }
+      if (!response.ok) throw new Error(data.error || '候補生成に失敗しました。')
+      setMessage('AI候補を3件生成しました。'); await onUpdated()
+    } catch (error) { setMessage(error instanceof Error ? error.message : '候補生成に失敗しました。') }
+    finally { setBusy('') }
+  }
+
+  async function approve(intervention: SessionControlData['interventions'][number]) {
+    if (!intervention.latestAttempt) return
+    const candidateIndex = selectedCandidates[intervention.id] ?? 0
+    const original = intervention.latestAttempt.candidates[candidateIndex] || ''
+    const finalMessage = editedMessages[intervention.id] ?? original
+    if (!window.confirm(`この内容をルーム${intervention.roomLabel}へ投稿しますか？\n\n${finalMessage}`)) return
+    setBusy(`approve:${intervention.id}`); setMessage('')
+    try {
+      const response = await fetch('/api/admin/interventions/approve', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ interventionId: intervention.id, attemptId: intervention.latestAttempt.id, candidateIndex, finalMessage }),
+      })
+      const data = (await response.json()) as { error?: string }
+      if (!response.ok) throw new Error(data.error || '投稿に失敗しました。')
+      setMessage(`ルーム${intervention.roomLabel}へ学生AIとして投稿しました。`); await onUpdated()
+    } catch (error) { setMessage(error instanceof Error ? error.message : '投稿に失敗しました。') }
+    finally { setBusy('') }
+  }
+
   const grouped = control.cycles.map((cycle) => ({
     ...cycle,
     slots: control.interventions.filter((item) => item.cycleId === cycle.id),
@@ -144,11 +179,48 @@ export default function AdminSessionControl({ sessionId, control, onUpdated }: P
           {grouped.map((cycle) => (
             <div key={cycle.id} style={{ padding: 12, border: '1px solid #dbe2ea', borderRadius: 10 }}>
               <strong>サイクル{cycle.cycleNumber}</strong>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+              <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
                 {cycle.slots.map((slot) => (
-                  <span key={slot.id} title={`${slot.plannedMessageType || ''} / ${slot.status}`} style={{ padding: '5px 8px', borderRadius: 12, background: slot.status === 'posted' ? '#d8f2dc' : '#e8edf3', fontSize: 12 }}>
-                    {slot.roomLabel}-{slot.slotIndex} {formatClock(slot.scheduledAt)}
-                  </span>
+                  <div key={slot.id} style={{ padding: 10, borderRadius: 10, background: slot.status === 'posted' ? '#d8f2dc' : '#e8edf3', fontSize: 13 }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <strong>ルーム{slot.roomLabel}・枠{slot.slotIndex}</strong>
+                      <span>{formatClock(slot.scheduledAt)}</span>
+                      <span>{slot.plannedMessageType}</span>
+                      <span>{slot.status}</span>
+                      {slot.status !== 'posted' && (
+                        <button onClick={() => void generate(slot.id)} disabled={Boolean(busy)}>
+                          {busy === `generate:${slot.id}` ? '生成中…' : slot.latestAttempt ? '再生成' : '候補を生成'}
+                        </button>
+                      )}
+                    </div>
+                    {slot.latestAttempt && slot.status !== 'posted' && (
+                      <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
+                        {slot.latestAttempt.candidates.map((candidate, index) => (
+                          <label key={`${slot.latestAttempt?.id}-${index}`} style={{ display: 'flex', gap: 8, alignItems: 'start' }}>
+                            <input
+                              type="radio"
+                              name={`candidate-${slot.id}`}
+                              checked={(selectedCandidates[slot.id] ?? 0) === index}
+                              onChange={() => {
+                                setSelectedCandidates((current) => ({ ...current, [slot.id]: index }))
+                                setEditedMessages((current) => ({ ...current, [slot.id]: candidate }))
+                              }}
+                            />
+                            <span>{candidate}</span>
+                          </label>
+                        ))}
+                        <textarea
+                          maxLength={100}
+                          value={editedMessages[slot.id] ?? slot.latestAttempt.candidates[selectedCandidates[slot.id] ?? 0] ?? ''}
+                          onChange={(event) => setEditedMessages((current) => ({ ...current, [slot.id]: event.target.value }))}
+                          style={{ width: '100%', minHeight: 58, padding: 8 }}
+                        />
+                        <button onClick={() => void approve(slot)} disabled={Boolean(busy)} style={{ justifySelf: 'start', padding: '8px 12px', fontWeight: 700 }}>
+                          {busy === `approve:${slot.id}` ? '投稿中…' : '選択した候補を承認・投稿'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 ))}
               </div>
             </div>
