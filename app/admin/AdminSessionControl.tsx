@@ -1,6 +1,6 @@
 'use client'
 
-import { type FormEvent, useEffect, useMemo, useState } from 'react'
+import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 
 export type SessionControlData = {
   status: string
@@ -43,6 +43,13 @@ export default function AdminSessionControl({ sessionId, control, onUpdated }: P
   const [now, setNow] = useState<number | null>(null)
   const [selectedCandidates, setSelectedCandidates] = useState<Record<string, number>>({})
   const [editedMessages, setEditedMessages] = useState<Record<string, string>>({})
+  const [audioStatus, setAudioStatus] = useState<'off' | 'starting' | 'recording' | 'error'>('off')
+  const [audioError, setAudioError] = useState('')
+  const recorderRef = useRef<MediaRecorder | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const audioChunksRef = useRef<Array<{ blob: Blob; capturedAt: number }>>([])
+  const audioActiveRef = useRef(false)
+  const segmentTimerRef = useRef<number | null>(null)
   const actionButton = { padding: '9px 13px', border: '1px solid #7890a7', borderRadius: 8, background: '#fff', color: '#17324d', fontWeight: 700, cursor: 'pointer' } as const
 
   useEffect(() => {
@@ -53,6 +60,13 @@ export default function AdminSessionControl({ sessionId, control, onUpdated }: P
       window.clearTimeout(initialTimer)
       window.clearInterval(timer)
     }
+  }, [])
+
+  useEffect(() => () => {
+    audioActiveRef.current = false
+    if (segmentTimerRef.current !== null) window.clearTimeout(segmentTimerRef.current)
+    if (recorderRef.current?.state === 'recording') recorderRef.current.stop()
+    streamRef.current?.getTracks().forEach((track) => track.stop())
   }, [])
 
   const elapsedMinutes = useMemo(() => control.interventionStartedAt && now !== null
@@ -104,15 +118,87 @@ export default function AdminSessionControl({ sessionId, control, onUpdated }: P
     finally { setBusy('') }
   }
 
+  async function startAudioReference() {
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setAudioStatus('error'); setAudioError('このブラウザでは音声参照を利用できません。'); return
+    }
+    setAudioStatus('starting'); setAudioError('')
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
+      const preferred = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus']
+        .find((type) => MediaRecorder.isTypeSupported(type))
+      audioChunksRef.current = []
+      audioActiveRef.current = true
+      streamRef.current = stream
+
+      const recordSegment = () => {
+        if (!audioActiveRef.current) return
+        const segmentParts: Blob[] = []
+        const recorder = preferred ? new MediaRecorder(stream, { mimeType: preferred }) : new MediaRecorder(stream)
+        recorderRef.current = recorder
+        recorder.ondataavailable = (event) => { if (event.data.size) segmentParts.push(event.data) }
+        recorder.onstop = () => {
+          if (segmentParts.length) {
+            const now = Date.now()
+            audioChunksRef.current.push({ blob: new Blob(segmentParts, { type: recorder.mimeType || 'audio/webm' }), capturedAt: now })
+            audioChunksRef.current = audioChunksRef.current.filter((chunk) => chunk.capturedAt >= now - 95_000)
+          }
+          if (audioActiveRef.current) recordSegment()
+        }
+        recorder.onerror = () => { setAudioStatus('error'); setAudioError('録音中にエラーが発生しました。') }
+        recorder.start()
+        segmentTimerRef.current = window.setTimeout(() => {
+          if (recorder.state === 'recording') recorder.stop()
+        }, 15_000)
+      }
+      recordSegment(); setAudioStatus('recording')
+    } catch {
+      setAudioStatus('error'); setAudioError('マイクを開始できませんでした。ブラウザのマイク許可を確認してください。')
+    }
+  }
+
+  function stopAudioReference() {
+    audioActiveRef.current = false
+    if (segmentTimerRef.current !== null) window.clearTimeout(segmentTimerRef.current)
+    if (recorderRef.current?.state === 'recording') recorderRef.current.stop()
+    streamRef.current?.getTracks().forEach((track) => track.stop())
+    recorderRef.current = null; streamRef.current = null; audioChunksRef.current = []
+    setAudioStatus('off'); setAudioError('')
+  }
+
+  function recentAudioSegments(referenceTime: number) {
+    const chunks = audioChunksRef.current.filter((chunk) => chunk.capturedAt >= referenceTime - 95_000)
+    return chunks.map((chunk) => chunk.blob)
+  }
+
+  async function finishCurrentAudioSegment() {
+    const recorder = recorderRef.current
+    if (audioStatus !== 'recording' || !recorder || recorder.state !== 'recording') return
+    await new Promise<void>((resolve) => {
+      const fallback = window.setTimeout(resolve, 1_000)
+      recorder.addEventListener('stop', () => { window.clearTimeout(fallback); resolve() }, { once: true })
+      recorder.stop()
+    })
+  }
+
   async function generate(interventionId: string) {
     setBusy(`generate:${interventionId}`); setMessage('')
     try {
+      const form = new FormData()
+      form.append('interventionId', interventionId)
+      await finishCurrentAudioSegment()
+      const referenceTime = now ?? audioChunksRef.current.at(-1)?.capturedAt ?? 0
+      const audioSegments = audioStatus === 'recording' ? recentAudioSegments(referenceTime) : []
+      audioSegments.forEach((audio, index) => form.append('audio', audio, `recent-lecture-${index}.webm`))
       const response = await fetch('/api/admin/interventions/generate', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ interventionId }),
+        method: 'POST', body: form,
       })
-      const data = (await response.json()) as { error?: string }
+      const data = (await response.json()) as { error?: string; audioUsed?: boolean; audioWarning?: string }
       if (!response.ok) throw new Error(data.error || '候補生成に失敗しました。')
-      setMessage('AI候補を3件生成しました。'); await onUpdated()
+      setMessage(data.audioUsed
+        ? '直近音声・PDF・チャットを参照してAI候補を3件生成しました。'
+        : `PDF・チャットを参照してAI候補を3件生成しました。${data.audioWarning ? ` ${data.audioWarning}` : ''}`)
+      await onUpdated()
     } catch (error) { setMessage(error instanceof Error ? error.message : '候補生成に失敗しました。') }
     finally { setBusy('') }
   }
@@ -145,6 +231,22 @@ export default function AdminSessionControl({ sessionId, control, onUpdated }: P
     <section style={{ marginBottom: 24, padding: 18, border: '1px solid #9db4c9', borderRadius: 14, background: '#fff' }}>
       <h2 style={{ marginTop: 0 }}>授業進行コントロール</h2>
       <p style={{ color: '#536273' }}>PDFと現在ページはA・B・Cすべてのルームに共通です。</p>
+
+      <div style={{ padding: 14, marginBottom: 16, border: '1px solid #d8b15c', borderRadius: 10, background: '#fff8e7' }}>
+        <strong>授業音声の参照（任意）</strong>
+        <p style={{ margin: '7px 0', color: '#66552e', lineHeight: 1.55 }}>
+          開始中は直近約90秒の音声だけをブラウザ内に保持し、候補生成時に文字起こしへ使用します。音声ファイル自体はデータベースへ保存しません。
+        </p>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          {audioStatus === 'recording'
+            ? <button type="button" onClick={stopAudioReference} style={{ ...actionButton, borderColor: '#b42318', color: '#b42318' }}>音声参照を停止</button>
+            : <button type="button" onClick={() => void startAudioReference()} disabled={audioStatus === 'starting'} style={{ ...actionButton, background: '#735b2e', color: '#fff' }}>{audioStatus === 'starting' ? 'マイク確認中…' : '音声参照を開始'}</button>}
+          <span style={{ fontWeight: 700, color: audioStatus === 'recording' ? '#16713c' : '#66552e' }}>
+            {audioStatus === 'recording' ? '● 音声参照中' : '○ 音声参照なし'}
+          </span>
+        </div>
+        {audioError && <p role="alert" style={{ color: '#b42318', marginBottom: 0 }}>{audioError}</p>}
+      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16 }}>
         <form onSubmit={uploadPdf} style={{ padding: 14, background: '#f3f6f9', borderRadius: 10 }}>

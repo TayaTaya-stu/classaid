@@ -22,10 +22,18 @@ export async function POST(request: Request) {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) return NextResponse.json({ error: 'GEMINI_API_KEYが設定されていません。' }, { status: 503 })
 
-  let body: unknown
-  try { body = await request.json() } catch { return NextResponse.json({ error: '不正なリクエストです。' }, { status: 400 }) }
-  const interventionId = body && typeof body === 'object' && 'interventionId' in body
-    ? (body as { interventionId?: unknown }).interventionId : undefined
+  let interventionId: unknown
+  let audioFiles: File[] = []
+  try {
+    if (request.headers.get('content-type')?.includes('multipart/form-data')) {
+      const form = await request.formData()
+      interventionId = form.get('interventionId')
+      audioFiles = form.getAll('audio').filter((audio): audio is File => audio instanceof File && audio.size > 0).slice(-7)
+    } else {
+      const body = await request.json() as { interventionId?: unknown }
+      interventionId = body?.interventionId
+    }
+  } catch { return NextResponse.json({ error: '不正なリクエストです。' }, { status: 400 }) }
   if (typeof interventionId !== 'string' || !UUID_REGEX.test(interventionId)) {
     return NextResponse.json({ error: '介入枠の指定が不正です。' }, { status: 400 })
   }
@@ -60,6 +68,37 @@ export async function POST(request: Request) {
     `${post.author_type === 'ai' ? '学生AI' : post.author_display_name}: ${post.message}`).join('\n') || 'まだ投稿はありません。'
   const messageType = (intervention.planned_message_type || (roomRelation.ai_condition === 'standard' ? 'standard' : 'reaction')) as PlannedMessageType
   const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = []
+  let transcript = ''
+  let audioWarning = ''
+
+  if (audioFiles.length) {
+    const acceptedAudio = ['audio/webm', 'audio/ogg', 'audio/mp4', 'audio/mpeg', 'audio/wav', 'audio/x-wav']
+    const totalBytes = audioFiles.reduce((sum, file) => sum + file.size, 0)
+    if (totalBytes > 15 * 1024 * 1024 || audioFiles.some((file) => !acceptedAudio.includes(file.type.split(';')[0].toLowerCase()))) {
+      audioWarning = '音声形式または容量が対象外だったため、音声は参照していません。'
+    } else {
+      try {
+        const ai = new GoogleGenAI({ apiKey })
+        const audioParts: Array<{ inlineData: { mimeType: string; data: string } }> = []
+        for (const audioFile of audioFiles) {
+          const mimeType = audioFile.type.split(';')[0].toLowerCase()
+          const audioData = Buffer.from(await audioFile.arrayBuffer()).toString('base64')
+          audioParts.push({ inlineData: { mimeType, data: audioData } })
+        }
+        const transcription = await ai.models.generateContent({
+          model: EXPERIMENT_AI_CONFIG.model,
+          contents: [{ role: 'user', parts: [
+            ...audioParts,
+            { text: 'これらは時間順に並んだ連続する日本語授業音声です。全体を一つの音声として文字起こししてください。聞き取れた発話だけを自然な日本語で出力し、説明や推測を加えないでください。' },
+          ] }],
+        })
+        transcript = (transcription.text || '').trim().slice(0, 6000)
+        if (!transcript) audioWarning = '音声を文字起こしできなかったため、音声なしで生成しました。'
+      } catch { audioWarning = '音声処理に失敗したため、音声なしで生成しました。' }
+    }
+  } else {
+    audioWarning = '利用できる直近音声がなかったため、音声なしで生成しました。'
+  }
 
   if (session.pdf_file_url) {
     const { data: pdf } = await supabaseAdmin.storage.from('lecture-materials').download(session.pdf_file_url)
@@ -76,6 +115,8 @@ AIであることは画面上で明示されます。教師ではなく学生の
 【個別指示】${instructionFor(roomRelation.ai_condition, messageType)}
 【共通文体】${EXPERIMENT_AI_CONFIG.style.shared}
 【現在のPDFページ】${session.current_page}
+【直近の授業音声の文字起こし】
+${transcript || '音声情報なし'}
 【直近チャット】
 ${chat}
 
@@ -98,12 +139,17 @@ ${chat}
       candidate_messages: candidates,
       slide_page_used: session.current_page,
       referenced_chat_ids: (posts || []).map((post) => post.id),
+      referenced_transcript_text: transcript || null,
       prompt_version: EXPERIMENT_AI_CONFIG.promptVersion,
       git_commit_hash: process.env.VERCEL_GIT_COMMIT_SHA || null,
     }).select('id, attempt_index, candidate_messages').single()
     if (insertError || !attempt) throw new Error('attempt insert failed')
     await supabaseAdmin.from('ai_interventions').update({ status: 'ready_for_review' }).eq('id', interventionId)
-    return NextResponse.json({ attempt: { id: attempt.id, attemptIndex: attempt.attempt_index, candidates: attempt.candidate_messages } })
+    return NextResponse.json({
+      attempt: { id: attempt.id, attemptIndex: attempt.attempt_index, candidates: attempt.candidate_messages },
+      audioUsed: Boolean(transcript),
+      audioWarning: audioWarning || undefined,
+    })
   } catch {
     await supabaseAdmin.from('ai_interventions').update({ status: 'pending' }).eq('id', interventionId)
     return NextResponse.json({ error: 'AI候補を生成できませんでした。再生成してください。' }, { status: 502 })
