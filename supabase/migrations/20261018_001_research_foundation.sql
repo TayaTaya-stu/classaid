@@ -39,12 +39,14 @@ CREATE TABLE sessions (
     protocol_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
     pdf_file_url TEXT NULL,
     current_page INTEGER NOT NULL DEFAULT 1 CHECK (current_page >= 1),
+    entry_slug TEXT NOT NULL UNIQUE,
     status TEXT NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'in_progress', 'completed', 'locked')),
     is_locked BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 COMMENT ON TABLE sessions IS '各授業回（第3,4,5回）の実験設定・進行時刻・プロトコルを保持するテーブル';
+COMMENT ON COLUMN sessions.entry_slug IS '学生が入室画面(/enter/[entry_slug])で利用する推測困難な参加用スラッグ';
 COMMENT ON COLUMN sessions.slot_minutes IS '各サイクル内でAI生成を開始する基準分（例: [3,6,9,12,15,18]）';
 COMMENT ON COLUMN sessions.protocol_snapshot IS '実験実施当日のプロトコル設定全スナップショット';
 COMMENT ON COLUMN sessions.is_locked IS '授業終了後に研究データを読み取り専用にするためのロックフラグ';
@@ -109,7 +111,8 @@ CREATE TABLE session_attendances (
     exclusion_reason TEXT NULL,
     last_seen_at TIMESTAMPTZ NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT session_attendances_session_participant_unique UNIQUE (session_id, participant_id)
+    CONSTRAINT session_attendances_session_participant_unique UNIQUE (session_id, participant_id),
+    CONSTRAINT session_attendances_room_display_name_unique UNIQUE (room_id, display_name)
 );
 
 COMMENT ON TABLE session_attendances IS '各回の出欠・参加区分（通常/遅延/大幅遅延/欠席/障害）と主分析対象フラグを管理';
@@ -159,6 +162,7 @@ INSERT INTO sessions (
     wave_number,
     research_stage,
     scheduled_at,
+    entry_slug,
     status,
     is_locked,
     created_at
@@ -168,6 +172,7 @@ INSERT INTO sessions (
     0,
     'baseline',
     now(),
+    'legacy-dev-entry',
     'completed',
     TRUE,
     now()
@@ -427,6 +432,91 @@ ALTER TABLE ai_interventions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_generation_attempts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE event_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE survey_tokens ENABLE ROW LEVEL SECURITY;
+
+-- ==============================================================================
+-- 10. 同時入室用 原子的グループ割り当てRPC関数
+-- ==============================================================================
+-- 70人規模の一斉アクセス時でもグループ人数差を最小化するため、排他ロックと原子的集計を行う
+CREATE OR REPLACE FUNCTION assign_or_get_participant(
+    p_identity_hash TEXT,
+    p_first_session_id UUID
+)
+RETURNS TABLE (
+    participant_id UUID,
+    assigned_group TEXT
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_existing_id UUID;
+    v_existing_group TEXT;
+    v_chosen_group TEXT;
+    v_new_id UUID;
+BEGIN
+    -- 引数の妥当性確認
+    IF p_identity_hash IS NULL OR trim(p_identity_hash) = '' THEN
+        RAISE EXCEPTION 'p_identity_hash must not be empty';
+    END IF;
+
+    IF p_first_session_id IS NULL THEN
+        RAISE EXCEPTION 'p_first_session_id must not be null';
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM public.sessions WHERE id = p_first_session_id) THEN
+        RAISE EXCEPTION 'Target session does not exist';
+    END IF;
+
+    -- トランザクションレベルの排他アドバイザリーロック（競合回避）
+    PERFORM pg_advisory_xact_lock(hashtext('assign_participant_lock'));
+
+    -- 1. 既存参加者チェック
+    SELECT p.id, p.assigned_group INTO v_existing_id, v_existing_group
+    FROM public.participants p
+    WHERE p.identity_hash = p_identity_hash;
+
+    IF FOUND THEN
+        RETURN QUERY SELECT v_existing_id, v_existing_group;
+        RETURN;
+    END IF;
+
+    -- 2. 新規参加者のグループ均等割り当て
+    -- A, B, C の現在人数を集計し、最少人数グループを選択。同数の場合は random() で偏りを防ぐ
+    WITH group_counts AS (
+        SELECT g.label AS group_label, COUNT(p.id) AS participant_count
+        FROM (VALUES ('A'), ('B'), ('C')) AS g(label)
+        LEFT JOIN public.participants p ON p.assigned_group = g.label
+        GROUP BY g.label
+    )
+    SELECT gc.group_label INTO v_chosen_group
+    FROM group_counts gc
+    ORDER BY gc.participant_count ASC, random()
+    LIMIT 1;
+
+    -- 3. 新規参加者の登録
+    INSERT INTO public.participants (
+        identity_hash,
+        assigned_group,
+        is_consented,
+        consented_at,
+        first_session_id
+    ) VALUES (
+        p_identity_hash,
+        v_chosen_group,
+        TRUE,
+        now(),
+        p_first_session_id
+    )
+    RETURNING id INTO v_new_id;
+
+    RETURN QUERY SELECT v_new_id, v_chosen_group;
+END;
+$$;
+
+-- 権限設定: service_role のみ実行可能とし、一般ユーザーからは遮断
+REVOKE ALL ON FUNCTION assign_or_get_participant(TEXT, UUID) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION assign_or_get_participant(TEXT, UUID) TO service_role;
 
 COMMIT;
 
