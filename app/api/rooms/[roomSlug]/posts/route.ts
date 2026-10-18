@@ -11,8 +11,7 @@ interface RouteContext {
 /**
  * GET: ルーム内の投稿一覧を取得
  * - 最新100件を取得し、クライアント向けに時系列昇順へ並べ替え
- * - いいね情報および親投稿情報の取得におけるDBエラーを適切にハンドリング
- * - 親投稿の取得も同一ルーム・未削除に厳格制限
+ * - いいね情報取得時のDBエラーを適切にハンドリング
  */
 export async function GET(_request: Request, context: RouteContext) {
   try {
@@ -31,7 +30,7 @@ export async function GET(_request: Request, context: RouteContext) {
     // 1. 同一ルームかつ未削除の「最新100件」を降順で取得
     const { data: rawPosts, error: postsError } = await supabaseAdmin
       .from('posts')
-      .select('id, author_display_name, author_type, is_ai, message, parent_id, reply_target_type, created_at')
+      .select('id, author_display_name, author_type, is_ai, message, audience_type, created_at')
       .eq('room_id', room.id)
       .eq('is_deleted', false)
       .order('created_at', { ascending: false })
@@ -74,51 +73,9 @@ export async function GET(_request: Request, context: RouteContext) {
       })
     }
 
-    // 3. 親投稿のマップを作成（同一ルームかつ未削除に厳格制限）
-    const parentIdSet = new Set<number>()
-    postList.forEach((p) => {
-      if (p.parent_id) parentIdSet.add(p.parent_id)
-    })
-
-    const parentMap = new Map<
-      number,
-      { authorDisplayName: string; authorType: 'human' | 'ai'; messageSnippet: string }
-    >()
-
-    if (parentIdSet.size > 0) {
-      const { data: parentPosts, error: parentsError } = await supabaseAdmin
-        .from('posts')
-        .select('id, author_display_name, author_type, is_ai, message')
-        .eq('room_id', room.id)
-        .eq('is_deleted', false)
-        .in('id', Array.from(parentIdSet))
-
-      if (parentsError) {
-        return NextResponse.json(
-          { error: '返信先情報の取得に失敗しました。' },
-          { status: 500 }
-        )
-      }
-
-      parentPosts?.forEach((parent) => {
-        const isAi = parent.author_type === 'ai' || parent.is_ai === true
-        const snippet =
-          parent.message.length > 50
-            ? `${parent.message.slice(0, 47)}...`
-            : parent.message
-
-        parentMap.set(parent.id, {
-          authorDisplayName: isAi ? '学生AI' : parent.author_display_name,
-          authorType: isAi ? 'ai' : 'human',
-          messageSnippet: snippet,
-        })
-      })
-    }
-
-    // 4. クライアントへ返す安全なDTOの組み立て
+    // 3. クライアントへ返す安全なDTOの組み立て
     const posts = postList.map((post) => {
       const isAi = post.author_type === 'ai' || post.is_ai === true
-      const parentInfo = post.parent_id ? parentMap.get(post.parent_id) || null : null
 
       return {
         id: post.id,
@@ -128,7 +85,7 @@ export async function GET(_request: Request, context: RouteContext) {
         createdAt: post.created_at,
         likesCount: likeCounts[post.id] || 0,
         isLiked: likedPostIds.has(post.id),
-        parent: parentInfo,
+        audienceType: post.audience_type === 'teacher' ? ('teacher' as const) : ('room' as const),
       }
     })
 
@@ -148,7 +105,7 @@ export async function GET(_request: Request, context: RouteContext) {
 }
 
 /**
- * POST: 人間学生による新規投稿・返信の作成
+ * POST: 人間学生による新規投稿の作成
  */
 export async function POST(request: Request, context: RouteContext) {
   try {
@@ -189,7 +146,16 @@ export async function POST(request: Request, context: RouteContext) {
       )
     }
 
-    const { message, parentId } = body as Record<string, unknown>
+    const requestBody = body as Record<string, unknown>
+    const { message, audienceType } = requestBody
+
+    // 学生用APIでは返信を受け付けない
+    if (Object.prototype.hasOwnProperty.call(requestBody, 'parentId')) {
+      return NextResponse.json(
+        { error: '返信機能は利用できません。通常の投稿として送信してください。' },
+        { status: 400 }
+      )
+    }
 
     // 1. 本文の検証
     if (typeof message !== 'string' || message.trim().length === 0) {
@@ -207,36 +173,12 @@ export async function POST(request: Request, context: RouteContext) {
       )
     }
 
-    // 2. 返信 (parentId) の検証
-    let validatedParentId: number | null = null
-    let replyTargetType: 'none' | 'to_human' | 'to_ai' = 'none'
-
-    if (parentId !== undefined && parentId !== null) {
-      if (typeof parentId !== 'number' || !Number.isInteger(parentId) || parentId <= 0) {
-        return NextResponse.json(
-          { error: '無効な返信先IDです。' },
-          { status: 400 }
-        )
-      }
-
-      const { data: parentPost, error: parentError } = await supabaseAdmin
-        .from('posts')
-        .select('id, room_id, author_type, is_ai, is_deleted')
-        .eq('id', parentId)
-        .eq('room_id', room.id)
-        .eq('is_deleted', false)
-        .maybeSingle()
-
-      if (parentError || !parentPost) {
-        return NextResponse.json(
-          { error: '返信先の投稿が見つからないか、削除されています。' },
-          { status: 400 }
-        )
-      }
-
-      validatedParentId = parentPost.id
-      const isParentAi = parentPost.author_type === 'ai' || parentPost.is_ai === true
-      replyTargetType = isParentAi ? 'to_ai' : 'to_human'
+    // 2. 投稿先の検証
+    if (audienceType !== 'room' && audienceType !== 'teacher') {
+      return NextResponse.json(
+        { error: '投稿先を正しく選択してください。' },
+        { status: 400 }
+      )
     }
 
     // 3. 直近の二重送信防止チェック（同一参加者が同一ルーム・同一本文を3秒以内に連投していないか）
@@ -271,8 +213,9 @@ export async function POST(request: Request, context: RouteContext) {
         is_ai: false, // 既存互換カラム
         likes: 0,
         dislikes: 0,
-        parent_id: validatedParentId,
-        reply_target_type: replyTargetType,
+        parent_id: null,
+        reply_target_type: 'none',
+        audience_type: audienceType,
         is_deleted: false,
       })
       .select('id, created_at')
@@ -295,7 +238,7 @@ export async function POST(request: Request, context: RouteContext) {
         createdAt: newPost.created_at,
         likesCount: 0,
         isLiked: false,
-        parent: null,
+        audienceType,
       },
     })
   } catch {

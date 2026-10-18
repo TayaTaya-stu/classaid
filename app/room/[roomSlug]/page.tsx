@@ -4,11 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 
-interface PostParent {
-  authorDisplayName: string
-  authorType: 'human' | 'ai'
-  messageSnippet: string
-}
+type AudienceType = 'room' | 'teacher'
 
 interface PostItem {
   id: number
@@ -18,7 +14,7 @@ interface PostItem {
   createdAt: string
   likesCount: number
   isLiked: boolean
-  parent: PostParent | null
+  audienceType: AudienceType
 }
 
 export default function RoomChatPage() {
@@ -33,9 +29,9 @@ export default function RoomChatPage() {
   const [isSending, setIsSending] = useState(false)
   const [isLikingId, setIsLikingId] = useState<number | null>(null)
   const [messageText, setMessageText] = useState('')
-  const [replyTarget, setReplyTarget] = useState<PostItem | null>(null)
+  const [audienceType, setAudienceType] = useState<AudienceType>('room')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [isSyncing, setIsSyncing] = useState(false)
+  const [syncErrorMessage, setSyncErrorMessage] = useState<string | null>(null)
 
   const feedEndRef = useRef<HTMLDivElement>(null)
   const inFlightFetchRef = useRef(false)
@@ -45,7 +41,6 @@ export default function RoomChatPage() {
   const fetchPosts = useCallback(async () => {
     if (!roomSlug || inFlightFetchRef.current) return
     inFlightFetchRef.current = true
-    setIsSyncing(true)
 
     try {
       const res = await fetch(`/api/rooms/${encodeURIComponent(roomSlug)}/posts`, {
@@ -60,11 +55,14 @@ export default function RoomChatPage() {
 
       if (!res.ok) {
         // 取得失敗時は現在の投稿リストを消去せず維持
+        setSyncErrorMessage('最新の投稿を取得できませんでした。')
+        setIsLoading(false)
         return
       }
 
       const data = await res.json()
       setPosts(data.posts || [])
+      setSyncErrorMessage(null)
       setIsSessionLocked(Boolean(data.isSessionLocked))
       if (data.currentUser?.displayName) {
         setDisplayName(data.currentUser.displayName)
@@ -80,9 +78,10 @@ export default function RoomChatPage() {
       }
     } catch {
       // ネットワーク切断時は既存データを保持
+      setSyncErrorMessage('通信を確認できません。接続を確認して再試行してください。')
+      setIsLoading(false)
     } finally {
       inFlightFetchRef.current = false
-      setIsSyncing(false)
     }
   }, [roomSlug, router])
 
@@ -111,7 +110,7 @@ export default function RoomChatPage() {
     }
   }, [fetchPosts])
 
-  // 新規投稿・返信の送信
+  // 新規投稿の送信
   async function handleSendMessage(e: React.FormEvent) {
     e.preventDefault()
 
@@ -126,7 +125,7 @@ export default function RoomChatPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: messageText.trim(),
-          parentId: replyTarget ? replyTarget.id : null,
+          audienceType,
         }),
       })
 
@@ -140,7 +139,7 @@ export default function RoomChatPage() {
 
       // 送信成功
       setMessageText('')
-      setReplyTarget(null)
+      setAudienceType('room')
       setIsSending(false)
 
       // 即座に最新リストを取得し最下部へスムーズスクロール
@@ -231,11 +230,6 @@ export default function RoomChatPage() {
               <span>
                 表示名: <strong className="text-blue-700 font-semibold">{displayName || '参加者'}</strong>
               </span>
-              <span className="text-slate-300">|</span>
-              <span className="flex items-center gap-1">
-                <span className={`w-1.5 h-1.5 rounded-full ${isSyncing ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`} />
-                {isSyncing ? '同期待ち' : '接続中'}
-              </span>
             </div>
           </div>
         </div>
@@ -283,16 +277,6 @@ export default function RoomChatPage() {
                     : 'border-slate-200/80'
                 }`}
               >
-                {/* 1階層親投稿のプレビュー引用 */}
-                {post.parent && (
-                  <div className="mb-2 p-2 bg-slate-50/80 border-l-2 border-slate-300 rounded text-xs text-slate-600 leading-snug">
-                    <span className="font-semibold text-slate-700 mr-1.5">
-                      返信先: {post.parent.authorDisplayName}
-                    </span>
-                    <span className="text-slate-500">&ldquo;{post.parent.messageSnippet}&rdquo;</span>
-                  </div>
-                )}
-
                 {/* 投稿ヘッダー: 投稿者名と時間 */}
                 <div className="flex items-center justify-between gap-2 mb-1.5">
                   <div className="flex items-center gap-1.5">
@@ -311,6 +295,12 @@ export default function RoomChatPage() {
                     {isSelf && !isAi && (
                       <span className="bg-blue-100 text-blue-700 text-[10px] font-medium px-1.5 py-0.2 rounded">
                         あなた
+                      </span>
+                    )}
+                    {post.audienceType === 'teacher' && (
+                      <span className="bg-amber-100 text-amber-800 text-[10px] font-semibold px-1.5 py-0.5 rounded">
+                        先生への質問・感想
+                    
                       </span>
                     )}
                   </div>
@@ -347,30 +337,25 @@ export default function RoomChatPage() {
                   </div>
                 </div>
 
-                {/* 下部アクション: 返信ボタン */}
-                {!isSessionLocked && (
-                  <div className="mt-2.5 pt-2 border-t border-slate-100 flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setReplyTarget(post)
-                        setErrorMessage(null)
-                      }}
-                      className="text-[11px] font-medium text-slate-500 hover:text-blue-600 flex items-center gap-1 transition-colors"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-                      </svg>
-                      返信する
-                    </button>
-                  </div>
-                )}
               </div>
             )
           })
         )}
         <div ref={feedEndRef} />
       </main>
+
+      {syncErrorMessage && (
+        <div className="bg-amber-50 border-t border-amber-200 text-amber-900 text-xs px-4 py-2 flex items-center justify-between gap-3">
+          <span>{syncErrorMessage}</span>
+          <button
+            type="button"
+            onClick={() => void fetchPosts()}
+            className="font-semibold text-amber-900 hover:text-amber-700 shrink-0"
+          >
+            再試行
+          </button>
+        </div>
+      )}
 
       {/* 3. エラー通知バー */}
       {errorMessage && (
@@ -388,37 +373,48 @@ export default function RoomChatPage() {
 
       {/* 4. 入力エリア (固定下部) */}
       <footer className="sticky bottom-0 bg-white border-t border-slate-200 p-3 sm:p-4 shadow-lg">
-        {/* 返信先プレビューバー */}
-        {replyTarget && (
-          <div className="mb-2 px-3 py-1.5 bg-blue-50/80 border border-blue-200/70 rounded-lg flex items-center justify-between text-xs text-blue-900 animate-fadeIn">
-            <div className="truncate mr-2">
-              <span className="font-semibold mr-1">{replyTarget.authorDisplayName} への返信:</span>
-              <span className="text-slate-600">
-                &ldquo;{replyTarget.message.slice(0, 30)}{replyTarget.message.length > 30 ? '...' : ''}&rdquo;
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setReplyTarget(null)}
-              className="text-slate-400 hover:text-slate-700 font-bold text-sm shrink-0"
-              aria-label="返信を解除"
-            >
-              ✕
-            </button>
-          </div>
-        )}
-
         {isSessionLocked ? (
           <div className="bg-slate-100 text-slate-500 text-center py-2.5 px-4 rounded-xl text-xs font-medium">
             この授業セッションは終了しました。新たな投稿はできません。
           </div>
         ) : (
           <form onSubmit={handleSendMessage} className="space-y-2">
+            <fieldset className="flex items-center gap-1 bg-slate-100 rounded-lg p-1 w-fit">
+              <legend className="sr-only">投稿先</legend>
+              <button
+                type="button"
+                aria-pressed={audienceType === 'room'}
+                onClick={() => setAudienceType('room')}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+                  audienceType === 'room'
+                    ? 'bg-white text-blue-700 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-800'
+                }`}
+              >
+                みんなへ
+              </button>
+              <button
+                type="button"
+                aria-pressed={audienceType === 'teacher'}
+                onClick={() => setAudienceType('teacher')}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+                  audienceType === 'teacher'
+                    ? 'bg-white text-amber-800 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-800'
+                }`}
+              >
+                先生への質問・感想
+              </button>
+            </fieldset>
             <div className="relative flex items-end gap-2">
               <textarea
                 value={messageText}
                 onChange={(e) => setMessageText(e.target.value)}
-                placeholder={replyTarget ? `${replyTarget.authorDisplayName} へ返信...` : '気づきや質問を投稿してみよう（500文字以内）'}
+                placeholder={
+                  audienceType === 'teacher'
+                    ? '先生への質問・感想を入力（500文字以内）'
+                    : '気づきや質問を投稿してみよう（500文字以内）'
+                }
                 maxLength={500}
                 rows={2}
                 disabled={isSending}
