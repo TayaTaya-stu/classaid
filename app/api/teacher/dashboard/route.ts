@@ -13,7 +13,7 @@ export async function GET(request: Request) {
     .order('scheduled_at', { ascending: false })
   if (error) return NextResponse.json({ error: '授業回を取得できませんでした。' }, { status: 500 })
   const selected = (requested && sessions?.find((item) => item.id === requested)) || sessions?.[0]
-  if (!selected) return NextResponse.json({ sessions: [], selectedSessionId: null, posts: [] })
+  if (!selected) return NextResponse.json({ sessions: [], selectedSessionId: null, rooms: [], posts: [] })
   const { data: rooms, error: roomsError } = await supabaseAdmin.from('rooms').select('id, group_label').eq('session_id', selected.id)
   if (roomsError) return NextResponse.json({ error: 'ルーム情報を取得できませんでした。' }, { status: 500 })
   const labels = new Map((rooms || []).map((room) => [room.id, room.group_label]))
@@ -25,6 +25,7 @@ export async function GET(request: Request) {
     sessions: (sessions || []).map((session) => ({ id: session.id, sessionNumber: session.session_number, scheduledAt: session.scheduled_at,
       isDevelopment: session.session_number === 0 || (session.protocol_snapshot as { exclude_from_analysis?: boolean } | null)?.exclude_from_analysis === true })),
     selectedSessionId: selected.id,
+    rooms: (rooms || []).map((room) => ({ id: room.id, groupLabel: room.group_label })),
     posts: (posts || []).map((post) => ({ id: post.id, roomLabel: labels.get(post.room_id) || '?', authorDisplayName: post.author_display_name, message: post.message, createdAt: post.created_at })),
   })
 }

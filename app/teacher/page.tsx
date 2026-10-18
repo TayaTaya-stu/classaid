@@ -4,7 +4,7 @@ import { type FormEvent, useCallback, useEffect, useState } from 'react'
 
 type Session = { id: string; sessionNumber: number; scheduledAt: string; isDevelopment: boolean }
 type TeacherPost = { id: number; roomLabel: string; authorDisplayName: string; message: string; createdAt: string }
-type TeacherData = { sessions: Session[]; selectedSessionId: string | null; posts: TeacherPost[] }
+type TeacherData = { sessions: Session[]; selectedSessionId: string | null; rooms: Array<{ id: string; groupLabel: string }>; posts: TeacherPost[] }
 
 const buttonStyle = { padding: '10px 15px', border: '1px solid #8b7854', borderRadius: 9, background: '#fff', color: '#40351f', fontWeight: 700, cursor: 'pointer' } as const
 function dateLabel(value: string) { return new Intl.DateTimeFormat('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value)) }
@@ -74,6 +74,14 @@ export default function TeacherPage() {
         <button onClick={() => void load(sessionId)} style={buttonStyle}>今すぐ更新</button>
       </section>
       {error && <p role="alert" style={{ color: '#b42318' }}>{error}</p>}
+      <section style={{ padding: 18, border: '1px solid #d8c9aa', borderRadius: 12, background: '#fff', marginBottom: 18 }}>
+        <h2 style={{ marginTop: 0 }}>各ルームの様子</h2>
+        <p style={{ color: '#665d4b' }}>各ルームの全投稿を閲覧専用画面で確認できます。</p>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {(data?.rooms || []).map((room) => <a key={room.id} href={`/teacher/room/${room.id}`} target="_blank" rel="noreferrer" style={{ ...buttonStyle, textDecoration: 'none' }}>ルーム{room.groupLabel}を開く</a>)}
+        </div>
+      </section>
+      <h2>先生宛ての投稿一覧</h2>
       <section style={{ display: 'grid', gap: 12 }}>
         {data?.posts.length ? data.posts.map((post) => (
           <article key={post.id} style={{ padding: 16, border: '1px solid #d8c9aa', borderRadius: 12, background: '#fff' }}>
