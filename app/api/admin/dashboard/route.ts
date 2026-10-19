@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { isAdminAuthenticated } from '@/lib/admin-auth'
+import { protocolOptions, SUPPORTED_SLOT_COUNTS } from '@/lib/ai-protocols'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 const UUID_REGEX = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
@@ -39,7 +40,7 @@ export async function GET(request: Request) {
   const cycleIds = (cycles || []).map((cycle) => cycle.id)
   const { data: interventions, error: interventionsError } = cycleIds.length
     ? await supabaseAdmin.from('ai_interventions')
-      .select('id, cycle_id, room_id, slot_index, scheduled_at, status, planned_message_type')
+      .select('id, cycle_id, room_id, slot_index, scheduled_at, status, planned_message_type, planned_actor_display_name')
       .in('cycle_id', cycleIds).order('scheduled_at')
     : { data: [], error: null }
   if (interventionsError) return NextResponse.json({ error: '介入予定の取得に失敗しました。' }, { status: 500 })
@@ -86,6 +87,9 @@ export async function GET(request: Request) {
       cycleCount: selectedSession.cycle_count,
       cycleDurationMinutes: selectedSession.cycle_duration_minutes,
       slotMinutes: selectedSession.slot_minutes,
+      protocolSnapshot: selectedSession.protocol_snapshot,
+      protocolOptions: protocolOptions(),
+      supportedSlotCounts: [...SUPPORTED_SLOT_COUNTS],
       cycles: (cycles || []).map((cycle) => ({
         id: cycle.id,
         cycleNumber: cycle.cycle_number,
@@ -105,6 +109,7 @@ export async function GET(request: Request) {
           scheduledAt: item.scheduled_at,
           status: item.status,
           plannedMessageType: item.planned_message_type,
+          plannedActorDisplayName: item.planned_actor_display_name,
           latestAttempt: latestAttempt ? {
             id: latestAttempt.id,
             attemptIndex: latestAttempt.attempt_index,

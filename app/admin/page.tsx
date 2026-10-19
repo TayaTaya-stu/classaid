@@ -21,12 +21,6 @@ function formatDateTime(value: string) {
 function sessionLabel(session: SessionSummary) {
   return `${session.isDevelopment ? '開発テスト' : `第${session.sessionNumber}回`}（${formatDateTime(session.scheduledAt)}）`
 }
-function conditionLabel(condition: RoomSummary['aiCondition']) {
-  if (condition === 'standard') return '標準AI'
-  if (condition === 'damekko') return 'ダメっこAI'
-  return 'AIなし'
-}
-
 export default function AdminPage() {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null)
   const [password, setPassword] = useState('')
@@ -108,16 +102,12 @@ export default function AdminPage() {
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <a href={`/screen/${dashboard.sharedWall.screenSlug}`} target="_blank" rel="noreferrer" style={{ ...buttonStyle, background: '#135f89', color: '#fff', textDecoration: 'none' }}>投影画面を開く</a>
             <a href={`/enter/${dashboard.sharedWall.entrySlug}`} target="_blank" rel="noreferrer" style={{ ...buttonStyle, textDecoration: 'none' }}>学生入室画面を確認</a>
+            {(dashboard?.rooms || []).length > 0 && (
+              <a href={`/admin/room/${dashboard!.rooms[0].id}`} target="_blank" rel="noreferrer" style={{ ...buttonStyle, background: '#fff', borderColor: '#4f7894', textDecoration: 'none' }}>共有ルームの投稿を確認</a>
+            )}
           </div>
         </section>
       )}
-      <section style={{ padding: 18, borderRadius: 14, background: '#fff', border: '1px solid #c7d3df', marginBottom: 20 }}>
-        <h2 style={{ marginTop: 0 }}>ルーム閲覧</h2>
-        <p style={{ color: '#536273' }}>必要なルームだけ別タブで開きます。閲覧専用のため、実験者の投稿はできません。</p>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          {(dashboard?.rooms || []).map((room) => <a key={room.id} href={`/admin/room/${room.id}`} target="_blank" rel="noreferrer" style={{ ...buttonStyle, display: 'inline-grid', gap: 2, textDecoration: 'none' }}><span>ルーム{room.groupLabel}を開く</span><small style={{ fontWeight: 500, color: '#65778a' }}>{conditionLabel(room.aiCondition)}</small></a>)}
-        </div>
-      </section>
       {dashboard?.sessionControl && selectedSessionId && <AdminSessionControl key={selectedSessionId} sessionId={selectedSessionId} control={dashboard.sessionControl} onUpdated={() => loadDashboard(selectedSessionId)} />}
     </main>
   )

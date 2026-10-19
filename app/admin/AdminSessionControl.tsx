@@ -11,6 +11,14 @@ export type SessionControlData = {
   cycleCount: number
   cycleDurationMinutes: number
   slotMinutes: number[]
+  protocolSnapshot: {
+    protocol_id?: string
+    protocol_label?: string
+    slot_count?: number
+    categories?: Record<string, { label?: string }>
+  } | null
+  protocolOptions: Array<{ id: string; label: string; description: string; version: string }>
+  supportedSlotCounts: number[]
   cycles: Array<{ id: string; cycleNumber: number; status: string; startedAt: string | null; endedAt: string | null }>
   interventions: Array<{
     id: string
@@ -22,6 +30,7 @@ export type SessionControlData = {
     scheduledAt: string
     status: string
     plannedMessageType: string | null
+    plannedActorDisplayName: string | null
     latestAttempt: { id: string; attemptIndex: number; candidates: string[] } | null
   }>
 }
@@ -36,12 +45,6 @@ function formatClock(value: string) {
   return new Intl.DateTimeFormat('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date(value))
 }
 
-function conditionLabel(condition: 'none' | 'standard' | 'damekko') {
-  if (condition === 'standard') return '標準AI'
-  if (condition === 'damekko') return 'ダメっこAI'
-  return 'AIなし'
-}
-
 export default function AdminSessionControl({ sessionId, control, onUpdated }: Props) {
   const [page, setPage] = useState(String(control.currentPage))
   const [pdf, setPdf] = useState<File | null>(null)
@@ -52,6 +55,8 @@ export default function AdminSessionControl({ sessionId, control, onUpdated }: P
   const [editedMessages, setEditedMessages] = useState<Record<string, string>>({})
   const [audioStatus, setAudioStatus] = useState<'off' | 'starting' | 'recording' | 'error'>('off')
   const [audioError, setAudioError] = useState('')
+  const [protocolId, setProtocolId] = useState(control.protocolSnapshot?.protocol_id || 'damekko-v1')
+  const [slotCount, setSlotCount] = useState(control.protocolSnapshot?.slot_count || control.slotMinutes.length || 6)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const audioChunksRef = useRef<Array<{ blob: Blob; capturedAt: number }>>([])
@@ -116,12 +121,24 @@ export default function AdminSessionControl({ sessionId, control, onUpdated }: P
   }
 
   async function startProtocol() {
-    if (!window.confirm('20分×3サイクルを開始します。開始後は予定時刻を作り直せません。開始しますか？')) return
+    const selectedLabel = control.protocolOptions.find((option) => option.id === protocolId)?.label || protocolId
+    if (!window.confirm(`${selectedLabel}・${control.cycleDurationMinutes}分あたり${slotCount}回で、${control.cycleDurationMinutes}分×${control.cycleCount}サイクルを開始します。開始後は設定を変更できません。開始しますか？`)) return
     setBusy('start'); setMessage('')
     try {
+      await request({ action: 'configure_protocol', sessionId, protocolId, slotCount })
       await request({ action: 'start_protocol', sessionId })
       setMessage('授業サイクルを開始しました。'); await onUpdated()
     } catch (error) { setMessage(error instanceof Error ? error.message : '開始に失敗しました。') }
+    finally { setBusy('') }
+  }
+
+  async function saveProtocolConfiguration() {
+    setBusy('protocol'); setMessage('')
+    try {
+      await request({ action: 'configure_protocol', sessionId, protocolId, slotCount })
+      setMessage('AIプロトコルと投稿回数を保存しました。開始後はこの授業回の設定として固定されます。')
+      await onUpdated()
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'AI設定の保存に失敗しました。') }
     finally { setBusy('') }
   }
 
@@ -200,11 +217,12 @@ export default function AdminSessionControl({ sessionId, control, onUpdated }: P
       const response = await fetch('/api/admin/interventions/generate', {
         method: 'POST', body: form,
       })
-      const data = (await response.json()) as { error?: string; audioUsed?: boolean; audioWarning?: string }
+      const data = (await response.json()) as { error?: string; audioUsed?: boolean; audioWarning?: string; modelUsed?: string }
       if (!response.ok) throw new Error(data.error || '候補生成に失敗しました。')
+      const modelNote = data.modelUsed ? ` 使用モデル：${data.modelUsed}` : ''
       setMessage(data.audioUsed
-        ? '直近音声・PDF・チャットを参照してAI候補を3件生成しました。'
-        : `PDF・チャットを参照してAI候補を3件生成しました。${data.audioWarning ? ` ${data.audioWarning}` : ''}`)
+        ? `直近音声・PDF・チャットを参照してAI候補を3件生成しました。${modelNote}`
+        : `PDF・チャットを参照してAI候補を3件生成しました。${data.audioWarning ? ` ${data.audioWarning}` : ''}${modelNote}`)
       await onUpdated()
     } catch (error) { setMessage(error instanceof Error ? error.message : '候補生成に失敗しました。') }
     finally { setBusy('') }
@@ -215,7 +233,7 @@ export default function AdminSessionControl({ sessionId, control, onUpdated }: P
     const candidateIndex = selectedCandidates[intervention.id] ?? 0
     const original = intervention.latestAttempt.candidates[candidateIndex] || ''
     const finalMessage = editedMessages[intervention.id] ?? original
-    if (!window.confirm(`この内容をルーム${intervention.roomLabel}へ投稿しますか？\n\n${finalMessage}`)) return
+    if (!window.confirm(`この内容を学生AIとして投稿しますか？\n\n${finalMessage}`)) return
     setBusy(`approve:${intervention.id}`); setMessage('')
     try {
       const response = await fetch('/api/admin/interventions/approve', {
@@ -224,7 +242,7 @@ export default function AdminSessionControl({ sessionId, control, onUpdated }: P
       })
       const data = (await response.json()) as { error?: string }
       if (!response.ok) throw new Error(data.error || '投稿に失敗しました。')
-      setMessage(`ルーム${intervention.roomLabel}へ学生AIとして投稿しました。`); await onUpdated()
+      setMessage('学生AIとして共有ルームへ投稿しました。'); await onUpdated()
     } catch (error) { setMessage(error instanceof Error ? error.message : '投稿に失敗しました。') }
     finally { setBusy('') }
   }
@@ -237,7 +255,7 @@ export default function AdminSessionControl({ sessionId, control, onUpdated }: P
   return (
     <section style={{ marginBottom: 24, padding: 18, border: '1px solid #9db4c9', borderRadius: 14, background: '#fff' }}>
       <h2 style={{ marginTop: 0 }}>授業進行コントロール</h2>
-      <p style={{ color: '#536273' }}>PDFと現在ページはA・B・Cすべてのルームに共通です。</p>
+      <p style={{ color: '#536273', marginBottom: 12 }}>PDFと現在ページは、この授業回の共有ルームに反映されます。</p>
 
       <div style={{ padding: 14, marginBottom: 16, border: '1px solid #d8b15c', borderRadius: 10, background: '#fff8e7' }}>
         <strong>授業音声の参照（任意）</strong>
@@ -255,31 +273,71 @@ export default function AdminSessionControl({ sessionId, control, onUpdated }: P
         {audioError && <p role="alert" style={{ color: '#b42318', marginBottom: 0 }}>{audioError}</p>}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16 }}>
-        <form onSubmit={uploadPdf} style={{ padding: 14, background: '#f3f6f9', borderRadius: 10 }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'stretch', flexWrap: 'wrap' }}>
+        <form onSubmit={uploadPdf} style={{ padding: 10, background: '#f3f6f9', borderRadius: 10, flex: '1 1 300px', maxWidth: 430 }}>
           <strong>授業PDF</strong>
-          <p style={{ fontSize: 13, overflowWrap: 'anywhere' }}>{control.pdfFilePath ? `登録済み：${control.pdfFilePath.split('/').pop()}` : '未登録'}</p>
-          <input type="file" accept="application/pdf,.pdf" onChange={(event) => setPdf(event.target.files?.[0] || null)} disabled={control.isLocked} />
-          <button type="submit" disabled={!pdf || Boolean(busy) || control.isLocked} style={{ ...actionButton, display: 'block', marginTop: 10 }}>
+          <p style={{ margin: '5px 0 7px', fontSize: 12, overflowWrap: 'anywhere' }}>{control.pdfFilePath ? `登録済み：${control.pdfFilePath.split('/').pop()}` : '未登録'}</p>
+          <div style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input type="file" accept="application/pdf,.pdf" onChange={(event) => setPdf(event.target.files?.[0] || null)} disabled={control.isLocked} style={{ maxWidth: 235, fontSize: 12 }} />
+          <button type="submit" disabled={!pdf || Boolean(busy) || control.isLocked} style={{ ...actionButton, padding: '7px 10px' }}>
             {busy === 'pdf' ? '登録中…' : 'PDFを登録'}
           </button>
+          </div>
         </form>
 
-        <div style={{ padding: 14, background: '#f3f6f9', borderRadius: 10 }}>
+        <div style={{ padding: 10, background: '#f3f6f9', borderRadius: 10, flex: '0 1 230px' }}>
           <strong>現在の授業ページ</strong>
-          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-            <input type="number" min={1} max={9999} value={page} onChange={(event) => setPage(event.target.value)} style={{ width: 90, padding: 8 }} />
-            <button onClick={savePage} disabled={Boolean(busy) || control.isLocked} style={actionButton}>{busy === 'page' ? '更新中…' : '更新'}</button>
+          <div style={{ display: 'flex', gap: 7, marginTop: 7 }}>
+            <input type="number" min={1} max={9999} value={page} onChange={(event) => setPage(event.target.value)} style={{ width: 76, padding: 7 }} />
+            <button onClick={savePage} disabled={Boolean(busy) || control.isLocked} style={{ ...actionButton, padding: '7px 10px' }}>{busy === 'page' ? '更新中…' : '更新'}</button>
           </div>
         </div>
 
-        <div style={{ padding: 14, background: '#edf6ed', borderRadius: 10 }}>
+        <div style={{ padding: 10, background: '#edf6ed', borderRadius: 10, flex: '1 1 260px' }}>
           <strong>介入サイクル</strong>
-          <p>{control.interventionStartedAt ? `開始：${formatClock(control.interventionStartedAt)}` : '未開始'}</p>
+          <p style={{ margin: '6px 0' }}>{control.interventionStartedAt ? `開始：${formatClock(control.interventionStartedAt)}` : '未開始'}</p>
           {control.interventionStartedAt
             ? <p>経過 約{Math.floor(elapsedMinutes)}分／現在サイクル {currentCycle}</p>
-            : <button onClick={startProtocol} disabled={Boolean(busy) || control.isLocked} style={{ ...actionButton, background: '#265e3d', color: '#fff' }}>{busy === 'start' ? '開始中…' : '20分×3サイクルを開始'}</button>}
+            : <p style={{ fontSize: 13 }}>下のAI設定を確認してから開始します。</p>}
         </div>
+      </div>
+
+      <div style={{ marginTop: 16, padding: 14, border: '1px solid #9f8bc2', borderRadius: 10, background: '#f8f5ff' }}>
+        <strong>AI介入プロトコル</strong>
+        <p style={{ margin: '7px 0', color: '#56466f', lineHeight: 1.55 }}>
+          人格・カテゴリー・順序・投稿回数だけを差し替えます。ダメっこ案は保存され、あとからいつでも選び直せます。
+        </p>
+        {control.interventionStartedAt ? (
+          <p style={{ marginBottom: 0, fontWeight: 700 }}>
+            使用中：{control.protocolSnapshot?.protocol_label || control.protocolSnapshot?.protocol_id || '旧設定'}／1サイクル{control.slotMinutes.length}回
+          </p>
+        ) : (
+          <div style={{ display: 'flex', gap: 12, alignItems: 'end', flexWrap: 'wrap' }}>
+            <label style={{ display: 'grid', gap: 5, minWidth: 250 }}>
+              <span style={{ fontSize: 13, fontWeight: 700 }}>AIの種類</span>
+              <select value={protocolId} onChange={(event) => setProtocolId(event.target.value)} disabled={Boolean(busy) || control.isLocked} style={{ padding: 9, borderRadius: 8, border: '1px solid #9f8bc2' }}>
+                {control.protocolOptions.map((option) => <option key={option.id} value={option.id}>{option.label}（v{option.version}）</option>)}
+              </select>
+            </label>
+            <label style={{ display: 'grid', gap: 5 }}>
+              <span style={{ fontSize: 13, fontWeight: 700 }}>20分あたりの投稿数</span>
+              <select value={slotCount} onChange={(event) => setSlotCount(Number(event.target.value))} disabled={Boolean(busy) || control.isLocked} style={{ padding: 9, borderRadius: 8, border: '1px solid #9f8bc2' }}>
+                {control.supportedSlotCounts.map((count) => <option key={count} value={count}>{count}回</option>)}
+              </select>
+            </label>
+            <button type="button" onClick={() => void saveProtocolConfiguration()} disabled={Boolean(busy) || control.isLocked} style={{ ...actionButton, background: '#62458a', color: '#fff' }}>
+              {busy === 'protocol' ? '保存中…' : 'この設定を保存'}
+            </button>
+            <button type="button" onClick={startProtocol} disabled={Boolean(busy) || control.isLocked} style={{ ...actionButton, background: '#265e3d', color: '#fff' }}>
+              {busy === 'start' ? '開始中…' : `${control.cycleDurationMinutes}分×${control.cycleCount}サイクルを開始`}
+            </button>
+          </div>
+        )}
+        {!control.interventionStartedAt && (
+          <p style={{ marginBottom: 0, fontSize: 13, color: '#655778' }}>
+            {control.protocolOptions.find((option) => option.id === protocolId)?.description}
+          </p>
+        )}
       </div>
 
       {message && <p role="status" style={{ fontWeight: 700 }}>{message}</p>}
@@ -293,12 +351,11 @@ export default function AdminSessionControl({ sessionId, control, onUpdated }: P
                 {cycle.slots.map((slot) => (
                   <div key={slot.id} style={{ padding: 10, borderRadius: 10, background: slot.status === 'posted' ? '#d8f2dc' : '#e8edf3', fontSize: 13 }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                      <strong>ルーム{slot.roomLabel}・枠{slot.slotIndex}</strong>
-                      <span style={{ padding: '3px 8px', borderRadius: 999, background: slot.aiCondition === 'damekko' ? '#f4ddff' : '#dceafe', color: slot.aiCondition === 'damekko' ? '#70268f' : '#214f7b', fontWeight: 800 }}>
-                        {conditionLabel(slot.aiCondition)}
-                      </span>
+                      <strong style={{ padding: '4px 9px', borderRadius: 999, background: '#f4ddff', color: '#70268f', fontSize: 14 }}>
+                        {control.protocolSnapshot?.categories?.[slot.plannedMessageType || '']?.label || slot.plannedMessageType}
+                      </strong>
+                      <span>枠{slot.slotIndex}</span>
                       <span>{formatClock(slot.scheduledAt)}</span>
-                      <span>{slot.plannedMessageType}</span>
                       <span>{slot.status}</span>
                       {slot.status !== 'posted' && (
                         <button onClick={() => void generate(slot.id)} disabled={Boolean(busy)} style={actionButton}>

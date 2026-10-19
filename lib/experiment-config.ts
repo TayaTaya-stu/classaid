@@ -1,7 +1,10 @@
 import 'server-only'
 
+import { actorFromSnapshot, instructionFromSnapshot } from '@/lib/ai-protocols'
+
 export const EXPERIMENT_AI_CONFIG = {
   model: 'gemini-3.1-flash-lite',
+  fallbackModels: ['gemini-3.5-flash-lite', 'gemini-3.8-flash'],
   promptVersion: 'damekko-v1-provisional',
   candidateCount: 3,
   maxCharacters: 70,
@@ -23,4 +26,21 @@ export function instructionFor(condition: 'standard' | 'damekko', messageType: P
   if (condition === 'standard') return EXPERIMENT_AI_CONFIG.style.standard
   if (messageType === 'standard') return EXPERIMENT_AI_CONFIG.style.damekko.reaction
   return EXPERIMENT_AI_CONFIG.style.damekko[messageType]
+}
+
+export function generationInstruction(snapshot: unknown, condition: 'standard' | 'damekko', messageType: string, actorId?: string | null) {
+  const configured = instructionFromSnapshot(snapshot, messageType)
+  const actor = actorFromSnapshot(snapshot, actorId)
+  if (configured) return { ...configured, actor }
+  const legacyType = (['reaction', 'positive', 'uncertainty', 'standard'].includes(messageType)
+    ? messageType
+    : condition === 'standard' ? 'standard' : 'reaction') as PlannedMessageType
+  return {
+    protocolId: condition === 'standard' ? 'standard-legacy' : 'damekko-legacy',
+    promptVersion: EXPERIMENT_AI_CONFIG.promptVersion,
+    sharedStyle: EXPERIMENT_AI_CONFIG.style.shared,
+    categoryLabel: legacyType,
+    instruction: instructionFor(condition, legacyType),
+    actor: null,
+  }
 }

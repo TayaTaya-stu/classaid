@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server'
 import { isAdminAuthenticated } from '@/lib/admin-auth'
+import {
+  createProtocolSnapshot,
+  isAiProtocolId,
+  isSupportedSlotCount,
+} from '@/lib/ai-protocols'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 const UUID_REGEX = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
@@ -54,7 +59,13 @@ export async function POST(request: Request) {
   if (!body || typeof body !== 'object') {
     return NextResponse.json({ error: '不正なリクエストです。' }, { status: 400 })
   }
-  const { action, sessionId, currentPage } = body as { action?: unknown; sessionId?: unknown; currentPage?: unknown }
+  const { action, sessionId, currentPage, protocolId, slotCount } = body as {
+    action?: unknown
+    sessionId?: unknown
+    currentPage?: unknown
+    protocolId?: unknown
+    slotCount?: unknown
+  }
   if (typeof sessionId !== 'string' || !(await canControlSession(sessionId))) {
     return NextResponse.json({ error: '操作できない授業回です。' }, { status: 400 })
   }
@@ -69,6 +80,50 @@ export async function POST(request: Request) {
       session_id: sessionId, event_type: 'current_slide_page_changed', metadata: { current_page: currentPage },
     })
     return NextResponse.json({ success: true, currentPage })
+  }
+
+  if (action === 'configure_protocol') {
+    if (!isAiProtocolId(protocolId) || !isSupportedSlotCount(slotCount)) {
+      return NextResponse.json({ error: 'AIプロトコルまたは投稿回数の指定が不正です。' }, { status: 400 })
+    }
+    const { data: session, error: sessionError } = await supabaseAdmin
+      .from('sessions')
+      .select('cycle_count, protocol_snapshot, intervention_started_at')
+      .eq('id', sessionId)
+      .single()
+    if (sessionError || !session) {
+      return NextResponse.json({ error: '授業回の設定を取得できませんでした。' }, { status: 500 })
+    }
+    if (session.intervention_started_at) {
+      return NextResponse.json({ error: '開始後の授業ではAI設定を変更できません。' }, { status: 409 })
+    }
+    const { data: existingCycles, error: cyclesError } = await supabaseAdmin
+      .from('session_cycles').select('id').eq('session_id', sessionId)
+    if (cyclesError) return NextResponse.json({ error: '既存の介入枠を確認できませんでした。' }, { status: 500 })
+    const cycleIds = (existingCycles || []).map((item) => item.id)
+    if (cycleIds.length) {
+      const { count, error: countError } = await supabaseAdmin
+        .from('ai_interventions').select('id', { count: 'exact', head: true }).in('cycle_id', cycleIds)
+      if (countError) return NextResponse.json({ error: '既存の介入枠を確認できませんでした。' }, { status: 500 })
+      if (count && count > 0) return NextResponse.json({ error: '介入枠が存在するためAI設定を変更できません。' }, { status: 409 })
+    }
+
+    const snapshot = createProtocolSnapshot(protocolId, slotCount, session.cycle_count)
+    const previous = session.protocol_snapshot && typeof session.protocol_snapshot === 'object' && !Array.isArray(session.protocol_snapshot)
+      ? session.protocol_snapshot as Record<string, unknown>
+      : {}
+    const mergedSnapshot = { ...previous, ...snapshot }
+    const { error: updateError } = await supabaseAdmin.from('sessions').update({
+      protocol_snapshot: mergedSnapshot,
+      slot_minutes: snapshot.slot_minutes,
+    }).eq('id', sessionId)
+    if (updateError) return NextResponse.json({ error: 'AI設定を保存できませんでした。' }, { status: 500 })
+    await supabaseAdmin.from('event_logs').insert({
+      session_id: sessionId,
+      event_type: 'ai_protocol_configured',
+      metadata: snapshot,
+    })
+    return NextResponse.json({ success: true, protocolSnapshot: snapshot })
   }
 
   if (action === 'start_protocol') {
