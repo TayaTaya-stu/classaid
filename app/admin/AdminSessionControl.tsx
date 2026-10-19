@@ -55,6 +55,7 @@ export default function AdminSessionControl({ sessionId, control, onUpdated }: P
   const [editedMessages, setEditedMessages] = useState<Record<string, string>>({})
   const [audioStatus, setAudioStatus] = useState<'off' | 'starting' | 'recording' | 'error'>('off')
   const [audioError, setAudioError] = useState('')
+  const [interventionAlertsEnabled, setInterventionAlertsEnabled] = useState(false)
   const [protocolId, setProtocolId] = useState(control.protocolSnapshot?.protocol_id || 'damekko-v1')
   const [slotCount, setSlotCount] = useState(control.protocolSnapshot?.slot_count || control.slotMinutes.length || 6)
   const recorderRef = useRef<MediaRecorder | null>(null)
@@ -62,6 +63,8 @@ export default function AdminSessionControl({ sessionId, control, onUpdated }: P
   const audioChunksRef = useRef<Array<{ blob: Blob; capturedAt: number }>>([])
   const audioActiveRef = useRef(false)
   const segmentTimerRef = useRef<number | null>(null)
+  const alertAudioContextRef = useRef<AudioContext | null>(null)
+  const notifiedInterventionIdsRef = useRef(new Set<string>())
   const actionButton = { padding: '9px 13px', border: '1px solid #7890a7', borderRadius: 8, background: '#fff', color: '#17324d', fontWeight: 700, cursor: 'pointer' } as const
 
   useEffect(() => {
@@ -79,6 +82,7 @@ export default function AdminSessionControl({ sessionId, control, onUpdated }: P
     if (segmentTimerRef.current !== null) window.clearTimeout(segmentTimerRef.current)
     if (recorderRef.current?.state === 'recording') recorderRef.current.stop()
     streamRef.current?.getTracks().forEach((track) => track.stop())
+    void alertAudioContextRef.current?.close()
   }, [])
 
   const elapsedMinutes = useMemo(() => control.interventionStartedAt && now !== null
@@ -87,6 +91,60 @@ export default function AdminSessionControl({ sessionId, control, onUpdated }: P
   const currentCycle = control.interventionStartedAt
     ? Math.min(control.cycleCount, Math.floor(elapsedMinutes / control.cycleDurationMinutes) + 1)
     : null
+  const dueInterventions = useMemo(() => now === null ? [] : control.interventions.filter((item) =>
+    new Date(item.scheduledAt).getTime() <= now && !['posted', 'skipped'].includes(item.status)
+  ), [control.interventions, now])
+
+  function prepareAlertSound() {
+    if (!alertAudioContextRef.current) {
+      alertAudioContextRef.current = new AudioContext()
+    }
+    if (alertAudioContextRef.current.state === 'suspended') {
+      void alertAudioContextRef.current.resume()
+    }
+  }
+
+  function playAlertSound() {
+    const context = alertAudioContextRef.current
+    if (!context || context.state !== 'running') return
+    const oscillator = context.createOscillator()
+    const gain = context.createGain()
+    oscillator.type = 'sine'
+    oscillator.frequency.setValueAtTime(880, context.currentTime)
+    gain.gain.setValueAtTime(0.0001, context.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.16, context.currentTime + 0.02)
+    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.55)
+    oscillator.connect(gain); gain.connect(context.destination)
+    oscillator.start(); oscillator.stop(context.currentTime + 0.6)
+  }
+
+  useEffect(() => {
+    const newlyDue = dueInterventions.filter((item) => !notifiedInterventionIdsRef.current.has(item.id))
+    if (!newlyDue.length) {
+      if (!dueInterventions.length) document.title = '実験者用管理画面'
+      return
+    }
+    newlyDue.forEach((item) => notifiedInterventionIdsRef.current.add(item.id))
+    playAlertSound()
+    document.title = `⚠ AI介入 ${dueInterventions.length}件｜実験者用管理画面`
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      const first = newlyDue[0]
+      const category = control.protocolSnapshot?.categories?.[first.plannedMessageType || '']?.label || first.plannedMessageType || 'AI介入'
+      new Notification('AI介入の予定時刻です', {
+        body: first.latestAttempt ? `${category}：候補を選んで投稿してください。` : `${category}：候補を生成してください。`,
+      })
+    }
+  }, [control.protocolSnapshot?.categories, dueInterventions])
+
+  async function enableInterventionAlerts() {
+    prepareAlertSound()
+    playAlertSound()
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      await Notification.requestPermission()
+    }
+    setInterventionAlertsEnabled(true)
+    setMessage('介入時刻の通知を有効にしました。予定時刻になると音と画面表示で知らせます。')
+  }
 
   async function request(body: Record<string, unknown>) {
     const response = await fetch('/api/admin/session-control', {
@@ -125,6 +183,7 @@ export default function AdminSessionControl({ sessionId, control, onUpdated }: P
     if (!window.confirm(`${selectedLabel}・${control.cycleDurationMinutes}分あたり${slotCount}回で、${control.cycleDurationMinutes}分×${control.cycleCount}サイクルを開始します。開始後は設定を変更できません。開始しますか？`)) return
     setBusy('start'); setMessage('')
     try {
+      prepareAlertSound()
       await request({ action: 'configure_protocol', sessionId, protocolId, slotCount })
       await request({ action: 'start_protocol', sessionId })
       setMessage('授業サイクルを開始しました。'); await onUpdated()
@@ -257,6 +316,39 @@ export default function AdminSessionControl({ sessionId, control, onUpdated }: P
       <h2 style={{ marginTop: 0 }}>授業進行コントロール</h2>
       <p style={{ color: '#536273', marginBottom: 12 }}>PDFと現在ページは、この授業回の共有ルームに反映されます。</p>
 
+      {dueInterventions.length > 0 && (
+        <div role="alert" style={{ position: 'sticky', top: 8, zIndex: 20, display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap', padding: '14px 16px', marginBottom: 14, border: '2px solid #d92d20', borderRadius: 12, background: '#fff1f0', boxShadow: '0 8px 24px rgba(180,35,24,.18)', color: '#9f1c13' }}>
+          <div>
+            <strong style={{ fontSize: 17 }}>⚠ AI介入の予定時刻です（{dueInterventions.length}件）</strong>
+            <div style={{ marginTop: 3, fontSize: 13 }}>
+              {dueInterventions[0].latestAttempt ? '候補を選び、確認して投稿してください。' : '該当枠の候補を生成してください。'}
+            </div>
+          </div>
+          <button type="button" onClick={() => document.getElementById(`intervention-${dueInterventions[0].id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })} style={{ ...actionButton, borderColor: '#d92d20', background: '#d92d20', color: '#fff' }}>
+            該当枠へ移動
+          </button>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '11px 13px', marginBottom: 14, border: '1px solid #b8a2dc', borderRadius: 10, background: '#f8f5ff' }}>
+        <strong>介入時刻の通知</strong>
+        <button
+          type="button"
+          onClick={() => void enableInterventionAlerts()}
+          style={{
+            ...actionButton,
+            borderColor: interventionAlertsEnabled ? '#20864b' : '#735b9e',
+            background: interventionAlertsEnabled ? '#eaf8ef' : '#735b9e',
+            color: interventionAlertsEnabled ? '#16713c' : '#fff',
+          }}
+        >
+          {interventionAlertsEnabled ? '介入通知：有効' : '介入通知を有効にする'}
+        </button>
+        <span style={{ color: interventionAlertsEnabled ? '#16713c' : '#66557a', fontSize: 13 }}>
+          {interventionAlertsEnabled ? '予定時刻に音と画面表示で知らせます。' : '授業開始前に一度押してください。'}
+        </span>
+      </div>
+
       <div style={{ padding: 14, marginBottom: 16, border: '1px solid #d8b15c', borderRadius: 10, background: '#fff8e7' }}>
         <strong>授業音声の参照（任意）</strong>
         <p style={{ margin: '7px 0', color: '#66552e', lineHeight: 1.55 }}>
@@ -349,7 +441,7 @@ export default function AdminSessionControl({ sessionId, control, onUpdated }: P
               <strong>サイクル{cycle.cycleNumber}</strong>
               <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
                 {cycle.slots.map((slot) => (
-                  <div key={slot.id} style={{ padding: 10, borderRadius: 10, background: slot.status === 'posted' ? '#d8f2dc' : '#e8edf3', fontSize: 13 }}>
+                  <div id={`intervention-${slot.id}`} key={slot.id} style={{ padding: 10, borderRadius: 10, border: dueInterventions.some((item) => item.id === slot.id) ? '2px solid #d92d20' : '2px solid transparent', background: slot.status === 'posted' ? '#d8f2dc' : dueInterventions.some((item) => item.id === slot.id) ? '#fff1f0' : '#e8edf3', fontSize: 13 }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                       <strong style={{ padding: '4px 9px', borderRadius: 999, background: '#f4ddff', color: '#70268f', fontSize: 14 }}>
                         {control.protocolSnapshot?.categories?.[slot.plannedMessageType || '']?.label || slot.plannedMessageType}
