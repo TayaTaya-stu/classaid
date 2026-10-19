@@ -1,0 +1,19 @@
+:root { color-scheme: light; font-family: "Yu Gothic UI", "Meiryo", sans-serif; }
+* { box-sizing: border-box; }
+body { margin: 0; background: #edf3f7; color: #17212b; }
+main { max-width: 520px; margin: 0 auto; padding: 28px; }
+.eyebrow { margin: 0; color: #15718c; font-size: 11px; font-weight: 900; letter-spacing: .15em; }
+h1 { margin: 5px 0 7px; font-size: 28px; }
+.lead { margin: 0 0 23px; color: #536273; line-height: 1.6; }
+label { display: grid; gap: 7px; margin: 0 0 15px; font-size: 13px; font-weight: 800; }
+input, select, button { font: inherit; }
+input, select { width: 100%; padding: 11px; border: 1px solid #9fb0bf; border-radius: 9px; background: #fff; }
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 5px; }
+button { padding: 11px; border: 1px solid #7790a5; border-radius: 9px; background: #fff; color: #17324d; font-weight: 800; cursor: pointer; }
+button.primary { border-color: #17647e; background: #17647e; color: #fff; }
+button:disabled { cursor: wait; opacity: .55; }
+.status { margin-top: 18px; padding: 12px 14px; border-radius: 10px; background: #fff; border-left: 5px solid #7991a6; font-weight: 800; }
+.status.running { border-left-color: #18864b; color: #136a3d; }
+.status.error { border-left-color: #b42318; color: #9e2017; }
+.note { margin-top: 15px; color: #617181; font-size: 12px; line-height: 1.65; }

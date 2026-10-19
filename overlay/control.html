@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>授業コメント投影</title>
+  <link rel="stylesheet" href="control.css">
+</head>
+<body>
+  <main>
+    <p class="eyebrow">CLASSROOM COMMENT OVERLAY</p>
+    <h1>授業コメント投影</h1>
+    <p class="lead">PowerPointやPDFの上に、新着コメントだけを一時表示します。</p>
+
+    <label>投影画面URL
+      <input id="screenUrl" type="url" placeholder="https://…/screen/…" autocomplete="off">
+    </label>
+    <label>表示する画面
+      <select id="displayId"></select>
+    </label>
+    <div class="row">
+      <label>表示秒数
+        <input id="durationSeconds" type="number" min="5" max="30" value="12">
+      </label>
+      <label>文字サイズ
+        <select id="fontScale">
+          <option value="0.85">小さめ</option>
+          <option value="1" selected>標準</option>
+          <option value="1.2">大きめ</option>
+          <option value="1.4">特大</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="actions">
+      <button id="start" class="primary">投影を開始</button>
+      <button id="stop">停止</button>
+      <button id="test">テスト表示</button>
+      <button id="openScreen">QR画面を開く</button>
+    </div>
+    <div id="status" class="status">停止中</div>
+    <p class="note">投影中の透明画面はクリックを通すため、背後のスライドを普段どおり操作できます。最初の取得時は過去投稿を流さず、開始後の新着だけを表示します。</p>
+  </main>
+  <script src="control.js"></script>
+</body>
+</html>

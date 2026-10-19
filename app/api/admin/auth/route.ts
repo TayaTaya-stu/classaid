@@ -21,7 +21,7 @@ export async function POST(request: Request) {
   const response = NextResponse.json({ success: true })
   response.cookies.set(ADMIN_COOKIE_NAME, createAdminSessionToken(), {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: new URL(request.url).protocol === 'https:',
     sameSite: 'strict',
     path: '/',
     maxAge: ADMIN_SESSION_MAX_AGE_SECONDS,
@@ -29,11 +29,11 @@ export async function POST(request: Request) {
   return response
 }
 
-export async function DELETE() {
+export async function DELETE(request: Request) {
   const response = NextResponse.json({ success: true })
   response.cookies.set(ADMIN_COOKIE_NAME, '', {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: new URL(request.url).protocol === 'https:',
     sameSite: 'strict',
     path: '/',
     maxAge: 0,

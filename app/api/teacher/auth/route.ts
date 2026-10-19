@@ -9,12 +9,12 @@ export async function POST(request: Request) {
   }
   const response = NextResponse.json({ success: true })
   response.cookies.set(TEACHER_COOKIE_NAME, createTeacherToken(), {
-    httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict', path: '/', maxAge: TEACHER_SESSION_MAX_AGE_SECONDS,
+    httpOnly: true, secure: new URL(request.url).protocol === 'https:', sameSite: 'strict', path: '/', maxAge: TEACHER_SESSION_MAX_AGE_SECONDS,
   })
   return response
 }
-export async function DELETE() {
+export async function DELETE(request: Request) {
   const response = NextResponse.json({ success: true })
-  response.cookies.set(TEACHER_COOKIE_NAME, '', { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict', path: '/', maxAge: 0 })
+  response.cookies.set(TEACHER_COOKIE_NAME, '', { httpOnly: true, secure: new URL(request.url).protocol === 'https:', sameSite: 'strict', path: '/', maxAge: 0 })
   return response
 }

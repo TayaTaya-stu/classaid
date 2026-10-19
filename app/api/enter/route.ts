@@ -427,7 +427,7 @@ export async function POST(request: Request) {
       value: sessionToken,
       httpOnly: true,
       sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
+      secure: new URL(request.url).protocol === 'https:',
       path: '/',
       maxAge: SESSION_TOKEN_MAX_AGE_SECONDS,
     })
