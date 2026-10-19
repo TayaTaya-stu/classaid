@@ -11,7 +11,7 @@ export async function GET(request: Request) {
 
   const { data: sessions, error: sessionsError } = await supabaseAdmin
     .from('sessions')
-    .select('id, session_number, wave_number, scheduled_at, status, is_locked, protocol_snapshot, pdf_file_url, current_page, intervention_started_at, cycle_count, cycle_duration_minutes, slot_minutes')
+    .select('id, session_number, wave_number, scheduled_at, status, is_locked, protocol_snapshot, pdf_file_url, current_page, intervention_started_at, cycle_count, cycle_duration_minutes, slot_minutes, room_mode, screen_slug, entry_slug')
     .neq('id', '00000000-0000-0000-0000-000000000001')
     .order('scheduled_at', { ascending: false })
   if (sessionsError) return NextResponse.json({ error: '授業回の取得に失敗しました。' }, { status: 500 })
@@ -73,6 +73,10 @@ export async function GET(request: Request) {
         (session.protocol_snapshot as { exclude_from_analysis?: boolean } | null)?.exclude_from_analysis === true,
     })),
     selectedSessionId: selectedSession.id,
+    sharedWall: selectedSession.room_mode === 'shared' ? {
+      screenSlug: selectedSession.screen_slug,
+      entrySlug: selectedSession.entry_slug,
+    } : null,
     sessionControl: {
       status: selectedSession.status,
       isLocked: selectedSession.is_locked,

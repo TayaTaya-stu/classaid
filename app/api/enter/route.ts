@@ -151,7 +151,7 @@ export async function POST(request: Request) {
     // 7. セッション（授業回）の特定とステータス検証
     const { data: session, error: sessionError } = await supabaseAdmin
       .from('sessions')
-      .select('id, session_number, status, is_locked, intervention_started_at')
+      .select('id, session_number, status, is_locked, intervention_started_at, room_mode')
       .eq('entry_slug', cleanEntrySlug)
       .maybeSingle()
 
@@ -242,17 +242,24 @@ export async function POST(request: Request) {
       }
     }
 
-    // 10. 該当グループのルームを取得
-    const { data: room, error: roomError } = await supabaseAdmin
+    // 10. ルームを取得。共有モードでは所属グループに関係なく全員を唯一のルームへ入れる。
+    let roomQuery = supabaseAdmin
       .from('rooms')
       .select('id, room_slug')
       .eq('session_id', session.id)
-      .eq('group_label', assignedGroup)
-      .maybeSingle()
 
-    if (roomError || !room) {
+    if (session.room_mode !== 'shared') {
+      roomQuery = roomQuery.eq('group_label', assignedGroup)
+    }
+
+    const { data: roomRows, error: roomError } = await roomQuery.limit(2)
+    const room = roomRows?.[0]
+
+    if (roomError || !room || (session.room_mode === 'shared' && roomRows.length !== 1)) {
       return NextResponse.json(
-        { error: '割り当てられたルームの取得に失敗しました。' },
+        { error: session.room_mode === 'shared'
+          ? '共有ルームの設定が正しくありません。管理者に連絡してください。'
+          : '割り当てられたルームの取得に失敗しました。' },
         { status: 500 }
       )
     }

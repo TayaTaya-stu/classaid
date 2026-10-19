@@ -37,14 +37,24 @@ export default function RoomChatPage() {
   const feedEndRef = useRef<HTMLDivElement>(null)
   const inFlightFetchRef = useRef(false)
   const isInitialScrollDoneRef = useRef(false)
+  const lastFullRefreshRef = useRef(0)
+  const postsRef = useRef<PostItem[]>([])
+
+  useEffect(() => {
+    postsRef.current = posts
+  }, [posts])
 
   // 投稿一覧を取得する関数
-  const fetchPosts = useCallback(async () => {
+  const fetchPosts = useCallback(async (forceFull = false) => {
     if (!roomSlug || inFlightFetchRef.current) return
     inFlightFetchRef.current = true
 
     try {
-      const res = await fetch(`/api/rooms/${encodeURIComponent(roomSlug)}/posts`, {
+      const currentPosts = postsRef.current
+      const newestId = currentPosts.length > 0 ? currentPosts[currentPosts.length - 1].id : null
+      const shouldFetchFull = forceFull || newestId === null || Date.now() - lastFullRefreshRef.current >= 30_000
+      const query = shouldFetchFull ? '' : `?afterId=${newestId}`
+      const res = await fetch(`/api/rooms/${encodeURIComponent(roomSlug)}/posts${query}`, {
         cache: 'no-store',
       })
 
@@ -62,7 +72,15 @@ export default function RoomChatPage() {
       }
 
       const data = await res.json()
-      setPosts(data.posts || [])
+      if (data.resultMode === 'delta') {
+        setPosts((current) => {
+          const known = new Set(current.map((post) => post.id))
+          return [...current, ...(data.posts || []).filter((post: PostItem) => !known.has(post.id))].slice(-100)
+        })
+      } else {
+        setPosts(data.posts || [])
+        lastFullRefreshRef.current = Date.now()
+      }
       setSyncErrorMessage(null)
       setIsSessionLocked(Boolean(data.isSessionLocked))
       if (data.currentUser?.displayName) {
@@ -87,7 +105,7 @@ export default function RoomChatPage() {
     }
   }, [roomSlug, router])
 
-  // 初期ロードと2.5秒間隔のポーリング
+  // 120人規模を想定し、4秒ごとの差分取得＋30秒ごとの完全同期にする。
   useEffect(() => {
     let isCancelled = false
 
@@ -103,7 +121,7 @@ export default function RoomChatPage() {
 
     const timer = setInterval(() => {
       void poll()
-    }, 2500)
+    }, 4000)
 
     return () => {
       isCancelled = true
@@ -303,7 +321,7 @@ export default function RoomChatPage() {
                     {post.audienceType === 'teacher' && (
                       <span className="bg-amber-100 text-amber-800 text-[10px] font-semibold px-1.5 py-0.5 rounded">
                         先生への質問・感想
-                    
+
                       </span>
                     )}
                   </div>

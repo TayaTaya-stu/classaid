@@ -5,7 +5,13 @@ import AdminSessionControl, { type SessionControlData } from './AdminSessionCont
 
 type SessionSummary = { id: string; sessionNumber: number; scheduledAt: string; isDevelopment: boolean }
 type RoomSummary = { id: string; groupLabel: string; aiCondition: 'none' | 'standard' | 'damekko' }
-type DashboardData = { sessions: SessionSummary[]; selectedSessionId: string | null; rooms: RoomSummary[]; sessionControl: SessionControlData | null }
+type DashboardData = {
+  sessions: SessionSummary[]
+  selectedSessionId: string | null
+  rooms: RoomSummary[]
+  sessionControl: SessionControlData | null
+  sharedWall: { screenSlug: string; entrySlug: string } | null
+}
 
 const buttonStyle = { padding: '10px 15px', border: '1px solid #7890a7', borderRadius: 9, background: '#fff', color: '#17324d', fontWeight: 700, cursor: 'pointer' } as const
 
@@ -95,6 +101,16 @@ export default function AdminPage() {
         </div>
         {loadError && <p role="alert" style={{ color: '#b42318' }}>{loadError}</p>}
       </section>
+      {dashboard?.sharedWall && (
+        <section style={{ padding: 18, borderRadius: 14, background: '#e8f6ff', border: '1px solid #82b9d8', marginBottom: 20 }}>
+          <h2 style={{ marginTop: 0 }}>共有コメントスクリーン</h2>
+          <p style={{ color: '#365b70' }}>投影画面は閲覧専用です。QRコードから学生用入室画面へ進めます。</p>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <a href={`/screen/${dashboard.sharedWall.screenSlug}`} target="_blank" rel="noreferrer" style={{ ...buttonStyle, background: '#135f89', color: '#fff', textDecoration: 'none' }}>投影画面を開く</a>
+            <a href={`/enter/${dashboard.sharedWall.entrySlug}`} target="_blank" rel="noreferrer" style={{ ...buttonStyle, textDecoration: 'none' }}>学生入室画面を確認</a>
+          </div>
+        </section>
+      )}
       <section style={{ padding: 18, borderRadius: 14, background: '#fff', border: '1px solid #c7d3df', marginBottom: 20 }}>
         <h2 style={{ marginTop: 0 }}>ルーム閲覧</h2>
         <p style={{ color: '#536273' }}>必要なルームだけ別タブで開きます。閲覧専用のため、実験者の投稿はできません。</p>

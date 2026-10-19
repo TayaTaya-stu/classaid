@@ -13,7 +13,7 @@ interface RouteContext {
  * - 最新100件を取得し、クライアント向けに時系列昇順へ並べ替え
  * - いいね情報取得時のDBエラーを適切にハンドリング
  */
-export async function GET(_request: Request, context: RouteContext) {
+export async function GET(request: Request, context: RouteContext) {
   try {
     const { roomSlug } = await context.params
     const roomAccess = await verifyRoomAccess(roomSlug)
@@ -27,15 +27,21 @@ export async function GET(_request: Request, context: RouteContext) {
 
     const { room, session, participant } = roomAccess
 
-    // 1. 同一ルームかつ未削除の「最新100件」を降順で取得
-    const { data: rawPosts, error: postsError } = await supabaseAdmin
+    const afterParam = new URL(request.url).searchParams.get('afterId')
+    const afterId = afterParam && /^\d+$/.test(afterParam) ? Number(afterParam) : null
+
+    // 初回・定期全件更新は最新100件、通常のポーリングは前回以降の差分だけを取得する。
+    let postsQuery = supabaseAdmin
       .from('posts')
       .select('id, author_display_name, author_type, is_ai, message, audience_type, created_at')
       .eq('room_id', room.id)
       .eq('is_deleted', false)
-      .order('created_at', { ascending: false })
-      .order('id', { ascending: false })
-      .limit(100)
+
+    postsQuery = afterId !== null
+      ? postsQuery.gt('id', afterId).order('id', { ascending: true }).limit(100)
+      : postsQuery.order('created_at', { ascending: false }).order('id', { ascending: false }).limit(100)
+
+    const { data: rawPosts, error: postsError } = await postsQuery
 
     if (postsError) {
       return NextResponse.json(
@@ -45,7 +51,7 @@ export async function GET(_request: Request, context: RouteContext) {
     }
 
     // クライアントへ返す前に時系列昇順（古い順）へ反転
-    const postList = (rawPosts || []).slice().reverse()
+    const postList = afterId !== null ? (rawPosts || []) : (rawPosts || []).slice().reverse()
     const postIds = postList.map((p) => p.id)
 
     // 2. いいね情報の集計（DBエラーは無視せず500として処理）
@@ -91,6 +97,7 @@ export async function GET(_request: Request, context: RouteContext) {
 
     return NextResponse.json({
       posts,
+      resultMode: afterId !== null ? 'delta' : 'full',
       isSessionLocked: session.isLocked || ['completed', 'locked'].includes(session.status),
       currentUser: {
         displayName: participant.displayName,
