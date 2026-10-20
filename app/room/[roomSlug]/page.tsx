@@ -52,7 +52,7 @@ export default function RoomChatPage() {
     try {
       const currentPosts = postsRef.current
       const newestId = currentPosts.length > 0 ? currentPosts[currentPosts.length - 1].id : null
-      const shouldFetchFull = forceFull || newestId === null || Date.now() - lastFullRefreshRef.current >= 30_000
+      const shouldFetchFull = forceFull || newestId === null || Date.now() - lastFullRefreshRef.current >= 60_000
       const query = shouldFetchFull ? '' : `?afterId=${newestId}`
       const res = await fetch(`/api/rooms/${encodeURIComponent(roomSlug)}/posts${query}`, {
         cache: 'no-store',
@@ -105,7 +105,7 @@ export default function RoomChatPage() {
     }
   }, [roomSlug, router])
 
-  // 120人規模を想定し、4秒ごとの差分取得＋30秒ごとの完全同期にする。
+  // 大人数授業を想定し、6秒ごとの差分取得＋60秒ごとの完全同期にする。
   useEffect(() => {
     let isCancelled = false
 
@@ -121,7 +121,7 @@ export default function RoomChatPage() {
 
     const timer = setInterval(() => {
       void poll()
-    }, 4000)
+    }, 6000)
 
     return () => {
       isCancelled = true

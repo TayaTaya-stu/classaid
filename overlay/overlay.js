@@ -1,5 +1,15 @@
 const lane = document.getElementById('lane')
 let rowCursor = 0
+let colorCursor = Math.floor(Math.random() * 7)
+const commentColors = [
+  '#ffffff',
+  '#ffe45e',
+  '#8cff78',
+  '#72e7ff',
+  '#ff9ed2',
+  '#cbbcff',
+  '#ffb36b',
+]
 
 function showPost(post, durationSeconds, fontScale) {
   const element = document.createElement('div')
@@ -7,7 +17,9 @@ function showPost(post, durationSeconds, fontScale) {
   element.style.top = `${(rowCursor % 8) * 11.5}%`
   element.style.setProperty('--travel-time', `${durationSeconds}s`)
   element.style.setProperty('--font-scale', String(fontScale))
+  element.style.setProperty('--comment-color', commentColors[colorCursor % commentColors.length])
   rowCursor += 1
+  colorCursor += 1
 
   const name = document.createElement('span')
   name.className = 'name'
