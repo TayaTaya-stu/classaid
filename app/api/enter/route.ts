@@ -35,10 +35,10 @@ export async function POST(request: Request) {
 
     const { studentId, entrySlug, consented, authToken } = body as Record<string, unknown>
 
-    // 1. 実験参加への同意確認
-    if (consented !== true) {
+    // 1. 研究利用への選択確認（同意しない場合もチャット利用は許可）
+    if (typeof consented !== 'boolean') {
       return NextResponse.json(
-        { error: '研究参加への同意が必要です。' },
+        { error: '研究利用について「同意する」または「同意しない」を選択してください。' },
         { status: 400 }
       )
     }
@@ -286,9 +286,15 @@ export async function POST(request: Request) {
       // 既に存在する場合: joined_at は保持し、last_seen_at のみ更新
       displayName = existingAttendance.display_name
 
+      const attendanceUpdate: Record<string, unknown> = { last_seen_at: nowIso }
+      if (!consented) {
+        attendanceUpdate.is_primary_analysis = false
+        attendanceUpdate.exclusion_reason = '研究利用への同意なし'
+      }
+
       const { error: updateAttendanceError } = await supabaseAdmin
         .from('session_attendances')
-        .update({ last_seen_at: nowIso })
+        .update(attendanceUpdate)
         .eq('id', existingAttendance.id)
 
       if (updateAttendanceError) {
@@ -316,6 +322,12 @@ export async function POST(request: Request) {
           isPrimaryAnalysis = false
           exclusionReason = '遅延入室(3〜10分)'
         }
+      }
+
+      // 研究利用に同意しない参加者は、入室時刻にかかわらず分析対象外とする。
+      if (!consented) {
+        isPrimaryAnalysis = false
+        exclusionReason = '研究利用への同意なし'
       }
 
       // ルーム内の既存表示名を取得
