@@ -155,7 +155,7 @@ export async function POST(request: Request, context: RouteContext) {
     }
 
     const requestBody = body as Record<string, unknown>
-    const { message, audienceType } = requestBody
+    const { message } = requestBody
 
     // 学生用APIでは返信を受け付けない
     if (Object.prototype.hasOwnProperty.call(requestBody, 'parentId')) {
@@ -181,15 +181,7 @@ export async function POST(request: Request, context: RouteContext) {
       )
     }
 
-    // 2. 投稿先の検証
-    if (audienceType !== 'room' && audienceType !== 'teacher') {
-      return NextResponse.json(
-        { error: '投稿先を正しく選択してください。' },
-        { status: 400 }
-      )
-    }
-
-    // 3. 直近の二重送信防止チェック（同一参加者が同一ルーム・同一本文を3秒以内に連投していないか）
+    // 2. 直近の二重送信防止チェック（同一参加者が同一ルーム・同一本文を3秒以内に連投していないか）
     const threeSecondsAgo = new Date(Date.now() - 3000).toISOString()
     const { data: recentDuplicate } = await supabaseAdmin
       .from('posts')
@@ -207,7 +199,8 @@ export async function POST(request: Request, context: RouteContext) {
       )
     }
 
-    // 4. サーバー側による安全な投稿レコードの作成
+    // 3. サーバー側による安全な投稿レコードの作成
+    // 学生画面で投稿先を選ばせず、常に共有ルーム全体向けとする。
     const { data: newPost, error: insertError } = await supabaseAdmin
       .from('posts')
       .insert({
@@ -223,7 +216,7 @@ export async function POST(request: Request, context: RouteContext) {
         dislikes: 0,
         parent_id: null,
         reply_target_type: 'none',
-        audience_type: audienceType,
+        audience_type: 'room',
         is_deleted: false,
       })
       .select('id, created_at')
@@ -246,7 +239,7 @@ export async function POST(request: Request, context: RouteContext) {
         createdAt: newPost.created_at,
         likesCount: 0,
         isLiked: false,
-        audienceType,
+        audienceType: 'room',
       },
     })
   } catch {

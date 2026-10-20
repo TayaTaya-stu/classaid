@@ -30,6 +30,12 @@ export default function AdminPage() {
   const [selectedSessionId, setSelectedSessionId] = useState('')
   const [loadError, setLoadError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [showSessionCreator, setShowSessionCreator] = useState(false)
+  const [newSessionNumber, setNewSessionNumber] = useState('1')
+  const [newScheduledAt, setNewScheduledAt] = useState('')
+  const [newSessionIsDevelopment, setNewSessionIsDevelopment] = useState(true)
+  const [isCreatingSession, setIsCreatingSession] = useState(false)
+  const [createSessionMessage, setCreateSessionMessage] = useState('')
 
   const loadDashboard = useCallback(async (sessionId?: string, quiet = false) => {
     if (!quiet) setIsLoading(true)
@@ -63,6 +69,33 @@ export default function AdminPage() {
   }
   async function handleLogout() { await fetch('/api/admin/auth', { method: 'DELETE' }); setAuthenticated(false); setDashboard(null) }
 
+  async function handleCreateSession(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setIsCreatingSession(true)
+    setCreateSessionMessage('')
+    try {
+      const response = await fetch('/api/admin/session-control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create_shared_session',
+          sessionNumber: Number(newSessionNumber),
+          scheduledAt: new Date(newScheduledAt).toISOString(),
+          isDevelopment: newSessionIsDevelopment,
+        }),
+      })
+      const data = (await response.json()) as { sessionId?: string; error?: string }
+      if (!response.ok || !data.sessionId) throw new Error(data.error || '授業回の作成に失敗しました。')
+      setShowSessionCreator(false)
+      setCreateSessionMessage('新しい授業回とQRコードを作成しました。')
+      await loadDashboard(data.sessionId)
+    } catch (error) {
+      setCreateSessionMessage(error instanceof Error ? error.message : '授業回の作成に失敗しました。')
+    } finally {
+      setIsCreatingSession(false)
+    }
+  }
+
   if (authenticated === null) return <main style={{ padding: 40, fontFamily: 'sans-serif' }}>管理画面を確認しています…</main>
   if (!authenticated) return (
     <main style={{ minHeight: '100vh', padding: '56px 20px', background: '#eef3f7', fontFamily: 'sans-serif' }}>
@@ -92,7 +125,28 @@ export default function AdminPage() {
             </select>
           </label>
           <button onClick={() => void loadDashboard(selectedSessionId)} disabled={isLoading} style={buttonStyle}>{isLoading ? '更新中…' : '今すぐ更新'}</button>
+          <button onClick={() => { setShowSessionCreator((current) => !current); setCreateSessionMessage('') }} style={{ ...buttonStyle, background: '#176b4d', color: '#fff', borderColor: '#176b4d' }}>
+            {showSessionCreator ? '作成をやめる' : '新しい授業回・QRを作成'}
+          </button>
         </div>
+        {showSessionCreator && (
+          <form onSubmit={handleCreateSession} style={{ marginTop: 16, padding: 16, borderRadius: 10, background: '#f4faf7', border: '1px solid #a9cfbd', display: 'flex', gap: 12, alignItems: 'end', flexWrap: 'wrap' }}>
+            <label style={{ display: 'grid', gap: 6, fontWeight: 700 }}>授業回
+              <input type="number" min="0" max="999" required value={newSessionNumber} onChange={(event) => setNewSessionNumber(event.target.value)} style={{ padding: 10, width: 110, border: '1px solid #9bacbd', borderRadius: 8 }} />
+            </label>
+            <label style={{ display: 'grid', gap: 6, fontWeight: 700 }}>授業日時
+              <input type="datetime-local" required value={newScheduledAt} onChange={(event) => setNewScheduledAt(event.target.value)} style={{ padding: 10, border: '1px solid #9bacbd', borderRadius: 8 }} />
+            </label>
+            <label style={{ display: 'flex', gap: 7, alignItems: 'center', paddingBottom: 10, fontWeight: 700 }}>
+              <input type="checkbox" checked={newSessionIsDevelopment} onChange={(event) => setNewSessionIsDevelopment(event.target.checked)} />
+              試運転（主分析から除外）
+            </label>
+            <button type="submit" disabled={isCreatingSession} style={{ ...buttonStyle, background: '#176b4d', color: '#fff', borderColor: '#176b4d' }}>
+              {isCreatingSession ? '作成中…' : '作成してQRを発行'}
+            </button>
+          </form>
+        )}
+        {createSessionMessage && <p role="status" style={{ color: createSessionMessage.includes('作成しました') ? '#176b4d' : '#b42318', fontWeight: 700 }}>{createSessionMessage}</p>}
         {loadError && <p role="alert" style={{ color: '#b42318' }}>{loadError}</p>}
       </section>
       {dashboard?.sharedWall && (

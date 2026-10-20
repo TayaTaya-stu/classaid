@@ -59,13 +59,42 @@ export async function POST(request: Request) {
   if (!body || typeof body !== 'object') {
     return NextResponse.json({ error: '不正なリクエストです。' }, { status: 400 })
   }
-  const { action, sessionId, currentPage, protocolId, slotCount } = body as {
+  const { action, sessionId, currentPage, protocolId, slotCount, sessionNumber, scheduledAt, isDevelopment } = body as {
     action?: unknown
     sessionId?: unknown
     currentPage?: unknown
     protocolId?: unknown
     slotCount?: unknown
+    sessionNumber?: unknown
+    scheduledAt?: unknown
+    isDevelopment?: unknown
   }
+
+  if (action === 'create_shared_session') {
+    if (!Number.isInteger(sessionNumber) || Number(sessionNumber) < 0 || Number(sessionNumber) > 999) {
+      return NextResponse.json({ error: '授業回は0〜999の整数で指定してください。' }, { status: 400 })
+    }
+    if (typeof scheduledAt !== 'string' || !Number.isFinite(new Date(scheduledAt).getTime())) {
+      return NextResponse.json({ error: '授業日時を正しく指定してください。' }, { status: 400 })
+    }
+    if (typeof isDevelopment !== 'boolean') {
+      return NextResponse.json({ error: '試運転設定が正しくありません。' }, { status: 400 })
+    }
+
+    const { data, error } = await supabaseAdmin.rpc('create_shared_session', {
+      p_session_number: Number(sessionNumber),
+      p_scheduled_at: new Date(scheduledAt).toISOString(),
+      p_is_development: isDevelopment,
+    })
+    if (error || typeof data !== 'string') {
+      return NextResponse.json(
+        { error: '新しい授業回を作成できませんでした。データベース更新を確認してください。' },
+        { status: 500 }
+      )
+    }
+    return NextResponse.json({ success: true, sessionId: data })
+  }
+
   if (typeof sessionId !== 'string' || !(await canControlSession(sessionId))) {
     return NextResponse.json({ error: '操作できない授業回です。' }, { status: 400 })
   }

@@ -79,8 +79,13 @@ export default function SessionEnterPage() {
       return
     }
 
-    if (!studentId.trim()) {
-      setErrorMessage('学籍番号を入力してください。')
+    const normalizedStudentId = studentId
+      .normalize('NFKC')
+      .replace(/[\s\-_ー‐－]/g, '')
+      .toUpperCase()
+
+    if (!/^[A-Z0-9]{8}$/.test(normalizedStudentId)) {
+      setErrorMessage('学籍番号は英数字8文字で入力してください。')
       return
     }
 
@@ -181,11 +186,11 @@ export default function SessionEnterPage() {
               disabled={loading || authInitFailed}
               value={studentId}
               onChange={(e) => setStudentId(e.target.value)}
-              placeholder="例: 1234567"
+              placeholder="例: 1A234567"
               className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all disabled:opacity-60"
             />
             <p className="text-[11px] text-slate-400 mt-1">
-              ※全角・半角やハイフンの有無は自動で調整されます。
+              ※全角・半角、大文字・小文字はどちらでも入力できます。
             </p>
           </div>
 

@@ -4,8 +4,6 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 
-type AudienceType = 'room' | 'teacher'
-
 interface PostItem {
   id: number
   authorDisplayName: string
@@ -14,7 +12,7 @@ interface PostItem {
   createdAt: string
   likesCount: number
   isLiked: boolean
-  audienceType: AudienceType
+  audienceType: 'room' | 'teacher'
 }
 
 export default function RoomChatPage() {
@@ -30,7 +28,6 @@ export default function RoomChatPage() {
   const [isSending, setIsSending] = useState(false)
   const [isLikingId, setIsLikingId] = useState<number | null>(null)
   const [messageText, setMessageText] = useState('')
-  const [audienceType, setAudienceType] = useState<AudienceType>('room')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [syncErrorMessage, setSyncErrorMessage] = useState<string | null>(null)
 
@@ -145,7 +142,6 @@ export default function RoomChatPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: messageText.trim(),
-          audienceType,
         }),
       })
 
@@ -159,7 +155,6 @@ export default function RoomChatPage() {
 
       // 送信成功
       setMessageText('')
-      setAudienceType('room')
       setIsSending(false)
 
       // 即座に最新リストを取得し最下部へスムーズスクロール
@@ -333,7 +328,7 @@ export default function RoomChatPage() {
                 {/* 投稿本文と右側いいねボタンのコンテナ */}
                 <div className="flex items-start justify-between gap-3">
                   {/* 本文（最大幅・XSS防止のため標準文字列描画） */}
-                  <p className="text-sm text-slate-800 leading-relaxed break-words whitespace-pre-wrap flex-1 select-text">
+                  <p className="text-[13px] text-slate-800 leading-relaxed break-words whitespace-pre-wrap flex-1 select-text">
                     {post.message}
                   </p>
 
@@ -400,46 +395,19 @@ export default function RoomChatPage() {
           </div>
         ) : (
           <form onSubmit={handleSendMessage} className="space-y-2">
-            <fieldset className="flex items-center gap-1 bg-slate-100 rounded-lg p-1 w-fit">
-              <legend className="sr-only">投稿先</legend>
-              <button
-                type="button"
-                aria-pressed={audienceType === 'room'}
-                onClick={() => setAudienceType('room')}
-                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-                  audienceType === 'room'
-                    ? 'bg-white text-blue-700 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-800'
-                }`}
-              >
-                みんなへ
-              </button>
-              <button
-                type="button"
-                aria-pressed={audienceType === 'teacher'}
-                onClick={() => setAudienceType('teacher')}
-                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-                  audienceType === 'teacher'
-                    ? 'bg-white text-amber-800 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-800'
-                }`}
-              >
-                先生への質問・感想
-              </button>
-            </fieldset>
+            <div className="text-xs text-slate-600 px-1">
+              あなたの表示名：
+              <strong className="text-blue-700 font-semibold">{displayName || '参加者'}</strong>
+            </div>
             <div className="relative flex items-end gap-2">
               <textarea
                 value={messageText}
                 onChange={(e) => setMessageText(e.target.value)}
-                placeholder={
-                  audienceType === 'teacher'
-                    ? '先生への質問・感想を入力（500文字以内）'
-                    : '気づきや質問を投稿してみよう（500文字以内）'
-                }
+                placeholder="気づきや質問を投稿してみよう（500文字以内）"
                 maxLength={500}
                 rows={2}
                 disabled={isSending}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white resize-none transition-all disabled:opacity-60"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[13px] text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white resize-none transition-all disabled:opacity-60"
               />
               <button
                 type="submit"

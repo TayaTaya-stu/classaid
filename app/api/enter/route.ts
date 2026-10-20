@@ -10,8 +10,9 @@ import { generateUniqueDisplayName } from '@/lib/display-names'
 
 // entrySlug のフォーマット検証（英数字・ハイフン・アンダースコア、1〜100文字）
 const ENTRY_SLUG_REGEX = /^[a-zA-Z0-9_-]{1,100}$/
-// 学籍番号の正規化後フォーマット検証（英数字のみ、3〜30文字）
-const NORMALIZED_ID_REGEX = /^[A-Z0-9]{3,30}$/
+// 学籍番号の正規化後フォーマット検証（英数字ちょうど8文字）
+// 入力時の全角/半角・大文字/小文字は normalizeStudentId で吸収する。
+const NORMALIZED_ID_REGEX = /^[A-Z0-9]{8}$/
 
 export async function POST(request: Request) {
   try {
@@ -62,7 +63,7 @@ export async function POST(request: Request) {
     const normalizedId = normalizeStudentId(studentId)
     if (!NORMALIZED_ID_REGEX.test(normalizedId)) {
       return NextResponse.json(
-        { error: '学籍番号の形式が正しくありません。' },
+        { error: '学籍番号は英数字8文字で入力してください。' },
         { status: 400 }
       )
     }
