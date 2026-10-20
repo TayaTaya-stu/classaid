@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "overlay": "electron overlay/main.cjs"
+    "overlay": "electron overlay/main.cjs",
+    "overlay:dist": "electron-builder --win portable"
   },
   "dependencies": {
     "@google/genai": "^2.11.0",
@@ -25,8 +26,23 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "electron": "44.9.0",
+    "electron-builder": "^26.0.12",
     "eslint-config-next": "16.2.9",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "main": "overlay/main.cjs",
+  "build": {
+    "appId": "jp.classroom.commentoverlay",
+    "productName": "Classroom Comment Overlay",
+    "files": [
+      "overlay/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "target": "portable",
+      "artifactName": "ClassroomCommentOverlay-${version}-portable.${ext}"
+    }
   }
 }

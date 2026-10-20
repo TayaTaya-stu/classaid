@@ -1,0 +1,10 @@
+:root { font-family: "Yu Gothic UI", "Meiryo", sans-serif; color: #152535; }
+* { box-sizing: border-box; }
+html, body { width: 100%; height: 100%; margin: 0; background: transparent; overflow: hidden; }
+main { width: 100%; height: 100%; padding: 12px; border: 2px solid #4f7e99; border-radius: 16px; background: rgba(255,255,255,.97); box-shadow: 0 10px 34px rgba(0,0,0,.3); }
+header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; cursor: move; -webkit-app-region: drag; }
+header strong { display: block; font-size: 18px; }
+header span { display: block; margin-top: 2px; color: #687887; font-size: 10px; }
+button { width: 34px; height: 28px; border: 1px solid #9eacb7; border-radius: 8px; background: #f3f6f8; color: #263d50; font-size: 20px; line-height: 20px; cursor: pointer; -webkit-app-region: no-drag; }
+#qr { display: block; width: min(230px, calc(100% - 12px)); aspect-ratio: 1; margin: 10px auto 4px; object-fit: contain; }
+p { margin: 2px 0 0; text-align: center; color: #40576a; font-size: 13px; font-weight: 700; }

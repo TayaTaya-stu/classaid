@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld('classroomOverlay', {
   stop: () => ipcRenderer.invoke('overlay:stop'),
   test: () => ipcRenderer.invoke('overlay:test'),
   openScreen: (screenUrl) => ipcRenderer.invoke('overlay:open-screen', screenUrl),
+  showQr: (screenUrl) => ipcRenderer.invoke('overlay:show-qr', screenUrl),
+  hideQr: () => ipcRenderer.invoke('overlay:hide-qr'),
   onStatus: (callback) => ipcRenderer.on('overlay:status', (_event, value) => callback(value)),
   onPosts: (callback) => ipcRenderer.on('overlay:posts', (_event, value) => callback(value)),
 })

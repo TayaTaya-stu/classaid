@@ -53,5 +53,6 @@ $('stop').addEventListener('click', () => run(async () => {
   showStatus('停止中')
 }))
 $('test').addEventListener('click', () => run(() => api.test()))
+$('showQr').addEventListener('click', () => run(() => api.showQr($('screenUrl').value.trim())))
 $('openScreen').addEventListener('click', () => run(() => api.openScreen($('screenUrl').value.trim())))
 api.onStatus(({ running, message }) => showStatus(message, running ? (message === '接続中' ? 'running' : 'error') : ''))

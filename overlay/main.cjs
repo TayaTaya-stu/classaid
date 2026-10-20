@@ -1,14 +1,23 @@
-const { app, BrowserWindow, ipcMain, screen, shell } = require('electron')
+const { app, BrowserWindow, ipcMain, screen, shell, Tray, Menu, nativeImage, globalShortcut } = require('electron')
 const path = require('node:path')
 const fs = require('node:fs')
 
 let controlWindow = null
 let overlayWindow = null
+let qrWindow = null
+let tray = null
+let isQuitting = false
 let pollTimer = null
 let lastPostId = null
 let activeConfig = null
 
 const configPath = () => path.join(app.getPath('userData'), 'overlay-config.json')
+const hasSingleInstanceLock = app.requestSingleInstanceLock()
+
+if (!hasSingleInstanceLock) app.quit()
+app.on('second-instance', () => {
+  if (app.isReady()) createControlWindow()
+})
 
 function readConfig() {
   try {
@@ -44,6 +53,11 @@ function chosenDisplay(displayId) {
 }
 
 function createControlWindow() {
+  if (controlWindow && !controlWindow.isDestroyed()) {
+    controlWindow.show()
+    controlWindow.focus()
+    return
+  }
   controlWindow = new BrowserWindow({
     width: 520,
     height: 610,
@@ -59,7 +73,29 @@ function createControlWindow() {
     },
   })
   controlWindow.loadFile(path.join(__dirname, 'control.html'))
+  controlWindow.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault()
+      controlWindow.hide()
+    }
+  })
   controlWindow.on('closed', () => { controlWindow = null })
+}
+
+function createTray() {
+  if (tray) return
+  const icon = nativeImage.createFromBuffer(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAt0lEQVR4nO2WXQ7CIBCEt6SHqMdUPEbFY+It9MG0krIL0rKDJsxTkyEzX/gtUVdjDZIxnednzaLH/cp2GUR5KjMC0ChPZZvcAG0IIxkoCHYPINUB/gPAO0ve2are1wBhwDZsr1cEoK0swOlyY7+PeKHWBwJ5ERF9HqffX4IOAAOQ/lg0FHYZyUCURwDaEFw2uwc0IKTMbFHqgqoBuvsU1JqlsVXxoqIZQB5VInqvP/qRigCalaP0Ao3/VaTQPAbmAAAAAElFTkSuQmCC', 'base64'))
+  tray = new Tray(icon.resize({ width: 20, height: 20 }))
+  tray.setToolTip('授業コメント投影')
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: '操作画面を開く', click: () => createControlWindow() },
+    { label: 'QRコードを表示', click: () => { void showQrWindow(readConfig().screenUrl).catch(() => createControlWindow()) } },
+    { label: 'QRコードを隠す', click: () => hideQrWindow() },
+    { label: 'コメント投影を停止', click: () => stopOverlay() },
+    { type: 'separator' },
+    { label: '完全に終了', click: () => { isQuitting = true; app.quit() } },
+  ]))
+  tray.on('double-click', () => createControlWindow())
 }
 
 function createOverlayWindow(config) {
@@ -87,6 +123,51 @@ function createOverlayWindow(config) {
   overlayWindow.loadFile(path.join(__dirname, 'overlay.html'))
   overlayWindow.once('ready-to-show', () => overlayWindow?.showInactive())
   overlayWindow.on('closed', () => { overlayWindow = null })
+}
+
+async function showQrWindow(value) {
+  const parsed = parseScreenUrl(value)
+  const response = await fetch(`${parsed.origin}/api/screen/${encodeURIComponent(parsed.screenSlug)}/posts`)
+  const data = await response.json()
+  if (!response.ok || !data.entryPath) throw new Error(data.error || '学生入室URLを取得できませんでした。')
+  const entryUrl = `${parsed.origin}${data.entryPath}`
+  const qrUrl = `${parsed.origin}/api/screen/qr?target=${encodeURIComponent(entryUrl)}`
+
+  if (qrWindow && !qrWindow.isDestroyed()) {
+    qrWindow.show()
+    qrWindow.focus()
+    return
+  }
+
+  const display = screen.getPrimaryDisplay()
+  const width = 292
+  const height = 350
+  qrWindow = new BrowserWindow({
+    width,
+    height,
+    x: display.workArea.x + display.workArea.width - width - 20,
+    y: display.workArea.y + 20,
+    minWidth: 250,
+    minHeight: 300,
+    frame: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: true,
+    title: '学生入室QRコード',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+    },
+  })
+  qrWindow.setAlwaysOnTop(true, 'floating')
+  await qrWindow.loadFile(path.join(__dirname, 'qr.html'), { query: { qrUrl, entryUrl } })
+  qrWindow.on('closed', () => { qrWindow = null })
+}
+
+function hideQrWindow() {
+  if (qrWindow && !qrWindow.isDestroyed()) qrWindow.hide()
 }
 
 async function pollPosts() {
@@ -166,13 +247,28 @@ ipcMain.handle('overlay:open-screen', async (_event, value) => {
   await shell.openExternal(`${parsed.origin}/screen/${parsed.screenSlug}`)
   return { ok: true }
 })
+ipcMain.handle('overlay:show-qr', async (_event, value) => {
+  await showQrWindow(value)
+  return { ok: true }
+})
+ipcMain.handle('overlay:hide-qr', () => {
+  hideQrWindow()
+  return { ok: true }
+})
 
 app.whenReady().then(() => {
+  createTray()
   createControlWindow()
+  globalShortcut.register('CommandOrControl+Shift+O', () => createControlWindow())
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createControlWindow() })
 })
 
 app.on('window-all-closed', () => {
-  stopOverlay()
-  if (process.platform !== 'darwin') app.quit()
+  // 操作画面を閉じてもタスクトレイで投影を継続する。
+})
+
+app.on('before-quit', () => {
+  isQuitting = true
+  globalShortcut.unregisterAll()
+  if (pollTimer) clearInterval(pollTimer)
 })
