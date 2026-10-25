@@ -229,22 +229,43 @@ export async function POST(request: Request, context: RouteContext) {
       )
     }
 
-    // 返信AIパイプラインの実行（モック生成・投影イベント登録・ログ記録）
-    // 万が一返信処理が失敗しても、人間投稿の成功レスポンスは維持する (fail-safe)
+    // 1. 返信ジョブの永続キュー登録（待ち時間の分離・障害時のジョブ消失防止）
+    // 数ミリ秒のINSERTのみで即座に完了し、外部AI生成などの重い処理は一切待たない
     const clientSentAt = typeof requestBody.clientSentAt === 'string' ? requestBody.clientSentAt : null
+    let jobId: string | null = null
     try {
-      const { processHumanPostForReactionAi } = await import('@/lib/reaction-ai/service')
-      await processHumanPostForReactionAi({
+      const { enqueueReplyJob, getReactionSessionConfig } = await import('@/lib/reaction-ai/service')
+      const config = await getReactionSessionConfig(session.id)
+      jobId = await enqueueReplyJob({
         sessionId: session.id,
         roomId: room.id,
         humanPostId: newPost.id,
-        humanMessage: trimmedMessage,
-        clientSentAt,
+        mode: config.mode,
       })
-    } catch (reactionError) {
-      console.error('Non-blocking reaction AI processing error:', reactionError)
+
+      // 2. 非同期ワーカーのキック（レスポンス完了後にバックグラウンド実行）
+      // Next.js 16 の after() を利用し、レスポンス返却をブロックしない
+      const { after } = await import('next/server')
+      after(async () => {
+        try {
+          const { executeReactionJob } = await import('@/lib/reaction-ai/service')
+          await executeReactionJob({
+            jobId,
+            sessionId: session.id,
+            roomId: room.id,
+            humanPostId: newPost.id,
+            humanMessage: trimmedMessage,
+            clientSentAt,
+          })
+        } catch (workerError) {
+          console.error('Async reaction worker error:', workerError)
+        }
+      })
+    } catch (enqueueError) {
+      console.error('Failed to enqueue reaction job:', enqueueError)
     }
 
+    // 3. 人間投稿の成功レスポンスを即座に返却（返信生成の待ち時間は0ms）
     return NextResponse.json({
       success: true,
       post: {

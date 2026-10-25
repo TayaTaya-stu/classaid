@@ -53,6 +53,13 @@ function showEvent(event, durationSeconds, fontScale) {
   }
 
   lane.append(element)
+  if (window.classroomOverlay?.notifyRendered) {
+    window.classroomOverlay.notifyRendered({
+      eventId: event.cursor,
+      renderedAt: Date.now(),
+      humanPostCreatedAt: event.humanPost.createdAt,
+    })
+  }
   element.addEventListener('animationend', () => element.remove(), { once: true })
 }
 

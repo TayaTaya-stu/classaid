@@ -190,12 +190,12 @@ async function pollPosts() {
     } else if (events.length || posts.length) {
       lastCursor = nextCursor
 
-      // 投影遅延（投稿から投影送信までの時間）の計測
+      // 送出遅延（投稿作成時刻からIPC送出完了までの時間）の計測
       const now = Date.now()
       events.forEach((ev) => {
         const postTime = new Date(ev.humanPost.createdAt).getTime()
-        const latencyMs = now - postTime
-        console.log(`[Overlay] Event #${ev.cursor} (${ev.eventType}) dispatch latency: ${latencyMs}ms (API fetch: ${now - fetchStart}ms)`)
+        const dispatchLatencyMs = now - postTime
+        console.log(`[Overlay Dispatch] Event #${ev.cursor} (${ev.eventType}) 送出遅延(dispatch latency): ${dispatchLatencyMs}ms (API fetch: ${now - fetchStart}ms)`)
       })
 
       // 新基盤: ペアイベント送信
@@ -280,6 +280,15 @@ ipcMain.handle('overlay:show-qr', async (_event, value) => {
 ipcMain.handle('overlay:hide-qr', () => {
   hideQrWindow()
   return { ok: true }
+})
+
+// rendererプロセスで実際にDOM追加・描画が開始された時刻の通知
+ipcMain.on('overlay:rendered', (_event, data) => {
+  if (!data || !data.eventId) return
+  const postTime = data.humanPostCreatedAt ? new Date(data.humanPostCreatedAt).getTime() : 0
+  const renderLatencyMs = postTime > 0 ? (data.renderedAt - postTime) : null
+  const latencyLabel = renderLatencyMs !== null ? `${renderLatencyMs}ms` : '不明'
+  console.log(`[Overlay Render] Event #${data.eventId} 実描画開始(rendered). 投稿から実描画開始までの遅延: ${latencyLabel} (※端末時計差を含む参考値)`)
 })
 
 app.whenReady().then(() => {

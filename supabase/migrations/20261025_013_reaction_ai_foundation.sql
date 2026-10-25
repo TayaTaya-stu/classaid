@@ -1,11 +1,6 @@
 -- ==============================================================================
--- ClassAid / reaction-ai: 返信AI基盤・投影イベントキュー・研究ログ
+-- ClassAid / reaction-ai: 返信AI基盤・ジョブ管理・直列化投影キュー・研究ログ
 -- マイグレーション番号: 20261025_013_reaction_ai_foundation.sql
--- 目的:
---   * 人間投稿に対する自動返信を独立管理する
---   * 生成完了順と投影順の整合性を担保する単調増加カーソル (projection_events)
---   * AI返信の研究分析用メタデータログ (ai_reply_logs)
---   * 既存のデータ・テーブル・トリガーには非破壊で追加
 -- ==============================================================================
 
 BEGIN;
@@ -27,10 +22,38 @@ COMMENT ON COLUMN public.sessions.is_mock_ai IS '試験用モック返信フラ�
 COMMENT ON COLUMN public.sessions.lecture_theme IS '授業テーマ (学術的接続の事前コンテキスト)';
 
 -- ------------------------------------------------------------------------------
--- 2. projection_events (投影イベントキュー: 単調増加カーソル)
+-- 2. posts テーブルにおける親投稿への重複AI返信防止制約 (DBレベルの二重返信排除)
 -- ------------------------------------------------------------------------------
--- AI返信の生成完了順が人間投稿IDと前後しても、字幕取得が欠落しないよう
--- 投影準備が整った順に厳格な単調増加IDを付与する。
+CREATE UNIQUE INDEX IF NOT EXISTS posts_parent_ai_reply_unique
+    ON public.posts (parent_id)
+    WHERE parent_id IS NOT NULL AND author_type = 'ai' AND is_deleted = FALSE;
+
+-- ------------------------------------------------------------------------------
+-- 3. ai_reply_jobs (非同期返信ジョブ管理テーブル: 永続化とリトライ保証)
+-- ------------------------------------------------------------------------------
+-- 投稿APIが外部AI生成を待たずに即時レスポンスを返すための永続ジョブキュー。
+-- プロセス再起動やネットワーク障害でも未完了ジョブが消失せず再試行できる。
+CREATE TABLE IF NOT EXISTS public.ai_reply_jobs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id UUID NOT NULL REFERENCES public.sessions(id) ON DELETE RESTRICT,
+    room_id UUID NOT NULL REFERENCES public.rooms(id) ON DELETE RESTRICT,
+    human_post_id BIGINT NOT NULL REFERENCES public.posts(id) ON DELETE RESTRICT,
+    mode TEXT NOT NULL CHECK (mode IN ('off', 'empathy', 'lecture_bridge', 'neutral')),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
+    attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+    max_attempts INTEGER NOT NULL DEFAULT 3,
+    last_error TEXT NULL,
+    locked_until TIMESTAMPTZ NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT ai_reply_jobs_human_post_unique UNIQUE (human_post_id)
+);
+
+COMMENT ON TABLE public.ai_reply_jobs IS '返信生成の永続ジョブキュー。投稿APIの待ち時間分離と耐障害性を担保';
+
+-- ------------------------------------------------------------------------------
+-- 4. projection_events (投影イベントキュー: 直列化単調増加カーソル)
+-- ------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.projection_events (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     session_id UUID NOT NULL REFERENCES public.sessions(id) ON DELETE RESTRICT,
@@ -42,11 +65,53 @@ CREATE TABLE IF NOT EXISTS public.projection_events (
     CONSTRAINT projection_events_human_post_unique UNIQUE (human_post_id)
 );
 
-COMMENT ON TABLE public.projection_events IS '投影用イベントテーブル。各人間投稿につき最大1件。生成完了順に単調増加IDを発行';
-COMMENT ON COLUMN public.projection_events.event_type IS 'human_only: AIなし、paired: 人間投稿＋AI返信の組';
+COMMENT ON TABLE public.projection_events IS '投影イベントキュー。完成した組から順に配信カーソルを付与';
 
 -- ------------------------------------------------------------------------------
--- 3. ai_reply_logs (研究分析用返信ログテーブル: 追記専用)
+-- 5. アドバイザリーロックによる投影イベント採番・コミット直列化関数
+-- ------------------------------------------------------------------------------
+-- 並行トランザクションにおける IDENTITY 採番順とコミット順の逆転（Out-of-order Commit）
+-- によるカーソル飛び・イベント欠落を根本から防止するため、同一セッション内のイベント作成を直列化する。
+CREATE OR REPLACE FUNCTION public.create_projection_event_atomic(
+    p_session_id UUID,
+    p_room_id UUID,
+    p_human_post_id BIGINT,
+    p_ai_post_id BIGINT,
+    p_event_type TEXT
+)
+RETURNS BIGINT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_event_id BIGINT;
+BEGIN
+    -- セッション単位でトランザクション排他ロックを取得（コミット時に自動解放）
+    PERFORM pg_advisory_xact_lock(hashtext('projection_lock:' || p_session_id::text));
+
+    -- 既に当該投稿のイベントが存在していればそのIDを返却（冪等性）
+    SELECT id INTO v_event_id
+    FROM public.projection_events
+    WHERE human_post_id = p_human_post_id;
+
+    IF v_event_id IS NOT NULL THEN
+        RETURN v_event_id;
+    END IF;
+
+    -- 直列化された環境下で安全に単調増加IDを採番・INSERT
+    INSERT INTO public.projection_events (
+        session_id, room_id, human_post_id, ai_post_id, event_type
+    ) VALUES (
+        p_session_id, p_room_id, p_human_post_id, p_ai_post_id, p_event_type
+    ) RETURNING id INTO v_event_id;
+
+    RETURN v_event_id;
+END;
+$$;
+
+-- ------------------------------------------------------------------------------
+-- 6. ai_reply_logs (研究分析用返信メタデータログ: 追記専用)
 -- ------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.ai_reply_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -69,11 +134,27 @@ CREATE TABLE IF NOT EXISTS public.ai_reply_logs (
     CONSTRAINT ai_reply_logs_human_post_unique UNIQUE (human_post_id)
 );
 
-COMMENT ON TABLE public.ai_reply_logs IS 'AI返信の生成・判定メタデータを完全記録する研究ログテーブル';
-COMMENT ON COLUMN public.ai_reply_logs.source_type IS 'mock: 試験モック / generated: 通常外部AI生成 / fallback: 予備返信 / none: AIなし';
+COMMENT ON TABLE public.ai_reply_logs IS 'AI返信の生成・判定メタデータを完全記録する研究ログテーブル (追記専用)';
 
 -- ------------------------------------------------------------------------------
--- 4. インデックスの作成
+-- 7. projection_render_logs (投影画面での実描画開始ログ: 追記専用)
+-- ------------------------------------------------------------------------------
+-- mainプロセスのIPC送出時刻と区別し、rendererで実際にDOM描画が開始された時刻を永続記録する。
+CREATE TABLE IF NOT EXISTS public.projection_render_logs (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    session_id UUID NOT NULL REFERENCES public.sessions(id) ON DELETE RESTRICT,
+    event_id BIGINT NOT NULL REFERENCES public.projection_events(id) ON DELETE RESTRICT,
+    client_instance_id TEXT NOT NULL DEFAULT 'default_overlay',
+    dispatched_at TIMESTAMPTZ NULL,
+    rendered_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    render_latency_ms INTEGER NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.projection_render_logs IS 'Electron等の画面上で実際にDOM描画が開始された時刻と所要時間の記録 (追記専用)';
+
+-- ------------------------------------------------------------------------------
+-- 8. インデックスの作成
 -- ------------------------------------------------------------------------------
 CREATE INDEX IF NOT EXISTS idx_projection_events_session_id_id 
     ON public.projection_events(session_id, id);
@@ -81,19 +162,23 @@ CREATE INDEX IF NOT EXISTS idx_projection_events_session_id_id
 CREATE INDEX IF NOT EXISTS idx_projection_events_room_id_id 
     ON public.projection_events(room_id, id);
 
+CREATE INDEX IF NOT EXISTS idx_ai_reply_jobs_status_locked 
+    ON public.ai_reply_jobs(status, locked_until);
+
 CREATE INDEX IF NOT EXISTS idx_ai_reply_logs_session_id 
     ON public.ai_reply_logs(session_id);
 
-CREATE INDEX IF NOT EXISTS idx_ai_reply_logs_human_post_id 
-    ON public.ai_reply_logs(human_post_id);
+CREATE INDEX IF NOT EXISTS idx_projection_render_logs_event_id 
+    ON public.projection_render_logs(event_id);
 
 -- ------------------------------------------------------------------------------
--- 5. セキュリティと不変性トリガー
+-- 9. セキュリティと不変性トリガー
 -- ------------------------------------------------------------------------------
+ALTER TABLE public.ai_reply_jobs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.projection_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ai_reply_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.projection_render_logs ENABLE ROW LEVEL SECURITY;
 
--- 既存の追記専用保護関数が存在する場合は適用
 DO $$
 BEGIN
     IF EXISTS (
@@ -102,6 +187,12 @@ BEGIN
         DROP TRIGGER IF EXISTS trg_protect_ai_reply_logs ON public.ai_reply_logs;
         CREATE TRIGGER trg_protect_ai_reply_logs
         BEFORE UPDATE OR DELETE ON public.ai_reply_logs
+        FOR EACH ROW
+        EXECUTE FUNCTION prevent_immutable_record_modification();
+
+        DROP TRIGGER IF EXISTS trg_protect_projection_render_logs ON public.projection_render_logs;
+        CREATE TRIGGER trg_protect_projection_render_logs
+        BEFORE UPDATE OR DELETE ON public.projection_render_logs
         FOR EACH ROW
         EXECUTE FUNCTION prevent_immutable_record_modification();
     END IF;

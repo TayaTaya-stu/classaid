@@ -47,7 +47,14 @@
 11. `20261019_010_flexible_ai_protocols.sql`（差し替え可能プロトコル基盤）
 12. `20261020_011_create_shared_session.sql`（共有セッション原子的作成RPC: `create_shared_session`）
 13. `012_session_log_views.sql`（研究分析用ビュー）
-14. **`20261025_013_reaction_ai_foundation.sql`**（★返信AI基盤: `projection_events`, `ai_reply_logs`）
+14. **`20261025_013_reaction_ai_foundation.sql`**（★返信AI基盤）
+    * `sessions` への返信AI制御カラム追加 (`reaction_ai_mode`, `reaction_ai_status`, `is_mock_ai`, `lecture_theme`)
+    * 親投稿への重複AI返信防止一意インデックス (`posts_parent_ai_reply_unique`)
+    * 非同期返信ジョブ永続キュー (`ai_reply_jobs`)
+    * 直列化単調増加投影キュー (`projection_events`)
+    * 排他アドバイザリーロック付き原子的採番関数 (`create_projection_event_atomic`)
+    * 研究分析用返信ログ (`ai_reply_logs`)
+    * 実描画開始ログ (`projection_render_logs`)
 
 > [!NOTE]
 > 一括結合したスクリプトとして流すことも可能です。各ファイルは `BEGIN;` 〜 `COMMIT;` のトランザクション単位で安全に分割されています。

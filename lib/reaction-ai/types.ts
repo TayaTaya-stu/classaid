@@ -1,6 +1,7 @@
 export type ReactionAiMode = 'off' | 'empathy' | 'lecture_bridge' | 'neutral'
 export type ReactionAiStatus = 'active' | 'stopped'
 export type ReplySourceType = 'mock' | 'generated' | 'fallback' | 'none'
+export type ReplyJobStatus = 'pending' | 'processing' | 'completed' | 'failed'
 
 export interface ReactionSessionConfig {
   mode: ReactionAiMode
@@ -39,6 +40,7 @@ export interface ProjectionEventDTO {
     message: string
     createdAt: string
     isMock?: boolean
+    sourceType?: ReplySourceType
   } | null
   createdAt: string
 }
@@ -49,4 +51,5 @@ export interface ProcessReactionResult {
   mode: ReactionAiMode
   sourceType: ReplySourceType
   isPaired: boolean
+  jobStatus: ReplyJobStatus
 }
