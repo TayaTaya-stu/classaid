@@ -83,3 +83,54 @@ GEMINI_API_KEY=[YOUR-GEMINI-API-KEY]
 ```
 
 ※ 旧プロジェクトの `.env.local` は決して上書きコピーせず、必ず新しいプロジェクト専用の値を使用してください。
+
+
+## Phase 1 corrective update 2026-10-25
+
+Do not execute SQL in the old ClassAid or Shared Wall projects.
+After scripts 000, 001 through 011, 012, and 013, run
+`20261025_014_reaction_ai_reliability.sql` on the NEW database only.
+014 has not yet been run on a real Supabase project. Back up any trial data first.
+It creates a trigger; it is a one-time migration, not a repeatedly executed setup script.
+
+The pipeline is OFF by default even for newly created sessions. For a newly created
+DEVELOPMENT session only, explicitly set `reaction_pipeline_enabled=true`,
+`reaction_ai_mode` to the chosen mode, and `is_mock_ai=true` before submitting posts.
+This is temporary SQL setup until the Phase 2 mode UI exists. Never enable a historical
+session: recovery would intentionally enqueue its missing human posts.
+
+Phase 1 mock and fallback text are visibly marked test fixtures, not valid research stimuli.
+The real external AI, semantic fallback selection, audio, PDF extraction, start demo,
+and student-side nested reply UI have not been implemented by this update.
+
+The post INSERT and durable job enqueue now share a DB transaction. If that DB transaction
+fails, submission returns failure, rather than falsely reporting a saved post. AI generation
+and finalization happen separately after submission; their failure never rolls back the human post.
+
+`after()` kicks the first worker. It is NOT a periodic scheduler. To recover interrupted jobs,
+log in as admin, then call POST `/api/admin/reaction-jobs` from the same-origin browser.
+The call recovers missing jobs for explicitly enabled sessions, claims up to 10 atomically,
+and processes them. Repeat for more jobs. Failed jobs can be reset with PUT to the same endpoint
+with JSON `{ "sessionId": "the-development-session-uuid" }`, then POST again.
+No Vercel cron has been configured. A periodic authenticated worker and monitoring are required
+before production; a cron alone would not establish the normal 3-second response target.
+
+Projection uses ONLY `reaction-events-v1` / `afterCursor`. An old overlay binary is not compatible
+with this new backend; keep old binaries pointed at the old site. During local tests use `npm run overlay`.
+The new portable binary must be rebuilt and tested before distribution.
+
+Deleted parent or reply suppresses the whole pair; cursor advances over intentional deletions.
+A missing referenced record or DB error fails the batch without advancing the client cursor.
+A later deletion cannot retract a pair already delivered; moderation controls require later work.
+
+Render logs use the unguessable screen URL as a session-scoped capability. Do not publish that URL
+outside the lecturer workflow. Per-event/client/phase uniqueness limits duplicate writes; a best-effort
+per-session request bound is also implemented. This is not an admin credential or proof of attention.
+`dom_added` means DOM insertion; `viewport_entered` is the next animation-frame callback with the element
+at the viewport edge. Neither proves that a projector displayed pixels or that anyone read them.
+`render_latency_ms` measures IPC dispatch to renderer callback on the same PC. DB `created_at` records
+server receipt. Never subtract clocks from different devices as an exact end-to-end latency.
+
+No human-only fallback exists for an AI-enabled session except explicit emergency stop.
+Unexpected DB errors leave a failed/recoverable job. No software can provide an AI response during
+an unavailable DB/network/projector; the objective is recovery without losing the original post.

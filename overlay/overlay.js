@@ -49,48 +49,29 @@ function showEvent(event, durationSeconds, fontScale) {
     aiMsg.textContent = event.aiReply.message
     aiPart.append(aiName, aiMsg)
 
-    element.append(connector, aiPart)
+    aiPart.prepend(connector)
+    element.append(aiPart)
   }
 
+  // Start at the viewport edge: no extra offscreen travel before first visibility.
   lane.append(element)
+  element.style.setProperty('--exit-distance', `${-(lane.clientWidth + element.offsetWidth + 40)}px`)
+  requestAnimationFrame(() => {
+    if (element.isConnected && window.classroomOverlay?.notifyRendered) {
+      window.classroomOverlay.notifyRendered({eventId:event.cursor,renderedAt:Date.now(),phase:'viewport_entered'})
+    }
+  })
   if (window.classroomOverlay?.notifyRendered) {
     window.classroomOverlay.notifyRendered({
       eventId: event.cursor,
       renderedAt: Date.now(),
-      humanPostCreatedAt: event.humanPost.createdAt,
+      phase: 'dom_added',
     })
   }
   element.addEventListener('animationend', () => element.remove(), { once: true })
 }
 
-// 新基盤: events（ペア対応）を優先リッスン
-if (window.classroomOverlay?.onEvents) {
-  window.classroomOverlay.onEvents(({ events, durationSeconds, fontScale }) => {
-    if (Array.isArray(events) && events.length > 0) {
-      events.forEach((event, index) => {
-        window.setTimeout(() => showEvent(event, durationSeconds, fontScale), index * 450)
-      })
-    }
-  })
-} else if (window.classroomOverlay?.onPosts) {
-  // 後方互換用フォールバック
-  window.classroomOverlay.onPosts(({ posts, durationSeconds, fontScale }) => {
-    posts.forEach((post, index) => {
-      window.setTimeout(() => {
-        showEvent({
-          cursor: post.id,
-          eventType: post.authorType === 'ai' ? 'paired' : 'human_only',
-          humanPost: {
-            id: post.id,
-            authorDisplayName: post.authorDisplayName,
-            authorType: 'human',
-            message: post.message,
-            createdAt: post.createdAt || new Date().toISOString(),
-          },
-          aiReply: null,
-          createdAt: post.createdAt || new Date().toISOString(),
-        }, durationSeconds, fontScale)
-      }, index * 450)
-    })
-  })
-}
+// Event protocol only: dispatch every complete pair immediately, with no batch delay.
+window.classroomOverlay.onEvents(({ events, durationSeconds, fontScale }) => {
+ if (Array.isArray(events)) events.forEach(event => showEvent(event, durationSeconds, fontScale))
+})

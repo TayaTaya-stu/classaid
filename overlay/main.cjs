@@ -1,6 +1,11 @@
 const { app, BrowserWindow, ipcMain, screen, shell, Tray, Menu, nativeImage, globalShortcut } = require('electron')
 const path = require('node:path')
 const fs = require('node:fs')
+const crypto = require('node:crypto')
+const clientInstanceId = crypto.randomUUID()
+let polling = false
+let generation = 0
+const sentEvents = new Map()
 
 let controlWindow = null
 let overlayWindow = null
@@ -171,7 +176,9 @@ function hideQrWindow() {
 }
 
 async function pollPosts() {
-  if (!activeConfig || !overlayWindow || overlayWindow.isDestroyed()) return
+  if (polling || !activeConfig || !overlayWindow || overlayWindow.isDestroyed() || overlayWindow.webContents.isLoading()) return
+  polling = true
+  const runGeneration = generation
   try {
     const parsed = parseScreenUrl(activeConfig.screenUrl)
     const suffix = lastCursor === null ? '' : `?afterCursor=${lastCursor}`
@@ -180,6 +187,8 @@ async function pollPosts() {
     const data = await response.json()
     if (!response.ok) throw new Error(data.error || '投稿を取得できませんでした。')
 
+    if (runGeneration !== generation || !activeConfig || !overlayWindow || overlayWindow.isDestroyed()) return
+    if (data.protocol !== 'reaction-events-v1') throw new Error('投影アプリとAPIの版が一致しません。')
     const events = Array.isArray(data.events) ? data.events : []
     const posts = Array.isArray(data.posts) ? data.posts : []
     const nextCursor = data.cursor ?? posts.at(-1)?.id ?? 0
@@ -188,11 +197,12 @@ async function pollPosts() {
       // 意図した仕様: 起動前の古い投稿は一斉に流さず、初期カーソルのみ設定
       lastCursor = nextCursor
     } else if (events.length || posts.length) {
-      lastCursor = nextCursor
 
       // 送出遅延（投稿作成時刻からIPC送出完了までの時間）の計測
       const now = Date.now()
       events.forEach((ev) => {
+        sentEvents.set(ev.cursor, { dispatchedAt: now, parsed })
+        if (sentEvents.size > 1000) sentEvents.delete(sentEvents.keys().next().value)
         const postTime = new Date(ev.humanPost.createdAt).getTime()
         const dispatchLatencyMs = now - postTime
         console.log(`[Overlay Dispatch] Event #${ev.cursor} (${ev.eventType}) 送出遅延(dispatch latency): ${dispatchLatencyMs}ms (API fetch: ${now - fetchStart}ms)`)
@@ -213,21 +223,25 @@ async function pollPosts() {
         fontScale: activeConfig.fontScale,
       })
     }
+    lastCursor = nextCursor
     controlWindow?.webContents.send('overlay:status', { running: true, message: '接続中', lastPostId: lastCursor })
   } catch (error) {
     controlWindow?.webContents.send('overlay:status', {
       running: true,
       message: error instanceof Error ? error.message : '接続に失敗しました。',
     })
+  } finally {
+    polling = false
   }
 }
 
 function stopOverlay() {
+  generation += 1
+  sentEvents.clear()
   if (pollTimer) clearInterval(pollTimer)
   pollTimer = null
   activeConfig = null
   lastCursor = null
-  lastPostId = null
   if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.close()
   overlayWindow = null
   controlWindow?.webContents.send('overlay:status', { running: false, message: '停止中' })
@@ -261,8 +275,37 @@ ipcMain.handle('overlay:start', async (_event, rawConfig) => {
 ipcMain.handle('overlay:stop', () => { stopOverlay(); return { ok: true } })
 ipcMain.handle('overlay:test', () => {
   if (!overlayWindow || overlayWindow.isDestroyed()) throw new Error('先に投影を開始してください。')
+  const testId = `test-${Date.now()}`
+  const testEvent = {
+    cursor: testId,
+    eventType: 'paired',
+    humanPost: {
+      id: testId,
+      authorDisplayName: 'テスト学生',
+      authorType: 'human',
+      message: 'コメントはこのように画面上へ流れます',
+      createdAt: new Date().toISOString(),
+    },
+    aiReply: {
+      id: `${testId}-ai`,
+      authorDisplayName: '学生AI',
+      authorType: 'ai',
+      message: '【テスト】AIからの返信もこのように表示されます',
+      createdAt: new Date().toISOString(),
+      isMock: true,
+    },
+    createdAt: new Date().toISOString(),
+  }
+  // 新基盤チャンネル（ペア対応）
+  overlayWindow.webContents.send('overlay:events', {
+    events: [testEvent],
+    posts: [{ id: testId, authorDisplayName: 'テスト学生', authorType: 'human', audienceType: 'room', message: 'コメントはこのように画面上へ流れます' }],
+    durationSeconds: activeConfig?.durationSeconds || 12,
+    fontScale: activeConfig?.fontScale || 1,
+  })
+  // 後方互換チャンネル
   overlayWindow.webContents.send('overlay:posts', {
-    posts: [{ id: `test-${Date.now()}`, authorDisplayName: 'テスト学生', authorType: 'human', audienceType: 'room', message: 'コメントはこのように画面上へ流れます' }],
+    posts: [{ id: testId, authorDisplayName: 'テスト学生', authorType: 'human', audienceType: 'room', message: 'コメントはこのように画面上へ流れます' }],
     durationSeconds: activeConfig?.durationSeconds || 12,
     fontScale: activeConfig?.fontScale || 1,
   })
@@ -282,13 +325,21 @@ ipcMain.handle('overlay:hide-qr', () => {
   return { ok: true }
 })
 
-// rendererプロセスで実際にDOM追加・描画が開始された時刻の通知
-ipcMain.on('overlay:rendered', (_event, data) => {
-  if (!data || !data.eventId) return
-  const postTime = data.humanPostCreatedAt ? new Date(data.humanPostCreatedAt).getTime() : 0
-  const renderLatencyMs = postTime > 0 ? (data.renderedAt - postTime) : null
-  const latencyLabel = renderLatencyMs !== null ? `${renderLatencyMs}ms` : '不明'
-  console.log(`[Overlay Render] Event #${data.eventId} 実描画開始(rendered). 投稿から実描画開始までの遅延: ${latencyLabel} (※端末時計差を含む参考値)`)
+// Record only notifications from our overlay renderer for events actually sent to it.
+ipcMain.on('overlay:rendered', async (ipcEvent, data) => {
+ if (!overlayWindow || ipcEvent.sender !== overlayWindow.webContents || !data || !Number.isSafeInteger(data.eventId)) return
+ const sent=sentEvents.get(data.eventId)
+ if (!sent || !['dom_added','viewport_entered'].includes(data.phase) || !Number.isFinite(data.renderedAt)) return
+ try {
+  const response=await fetch(`${sent.parsed.origin}/api/screen/${encodeURIComponent(sent.parsed.screenSlug)}/render`, {
+   method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({eventId:data.eventId,clientInstanceId,phase:data.phase,renderedAt:data.renderedAt,dispatchedAt:sent.dispatchedAt}),
+   signal:AbortSignal.timeout(5000),
+  })
+  if(!response.ok) throw new Error(`Render log HTTP ${response.status}`)
+ } catch {
+  console.warn('投影は継続中ですが、表示ログの保存に失敗しました。')
+ }
 })
 
 app.whenReady().then(() => {

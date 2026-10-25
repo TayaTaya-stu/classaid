@@ -24,6 +24,7 @@ const eslintConfig = defineConfig([
     files: ["overlay/**/*.js"],
     languageOptions: {
       globals: {
+        requestAnimationFrame: "readonly",
         window: "readonly",
         document: "readonly",
         console: "readonly",

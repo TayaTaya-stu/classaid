@@ -230,18 +230,19 @@ export async function POST(request: Request, context: RouteContext) {
     }
 
     // 1. 返信ジョブの永続キュー登録（待ち時間の分離・障害時のジョブ消失防止）
-    // 数ミリ秒のINSERTのみで即座に完了し、外部AI生成などの重い処理は一切待たない
+    // ジョブ照会等のDBアクセスは待つが、外部AI生成などの重い処理は一切待たない
     const clientSentAt = typeof requestBody.clientSentAt === 'string' ? requestBody.clientSentAt : null
     let jobId: string | null = null
     try {
-      const { enqueueReplyJob, getReactionSessionConfig } = await import('@/lib/reaction-ai/service')
-      const config = await getReactionSessionConfig(session.id)
+      const { enqueueReplyJob } = await import('@/lib/reaction-ai/service')
       jobId = await enqueueReplyJob({
         sessionId: session.id,
         roomId: room.id,
         humanPostId: newPost.id,
-        mode: config.mode,
+        mode: 'off', // mode is read by the DB trigger, never inferred here
       })
+
+      if (!jobId) return NextResponse.json({ success: true, post: { id:newPost.id, authorDisplayName:participant.displayName, authorType:'human', message:trimmedMessage, createdAt:newPost.created_at, likesCount:0, isLiked:false, audienceType:'room' } })
 
       // 2. 非同期ワーカーのキック（レスポンス完了後にバックグラウンド実行）
       // Next.js 16 の after() を利用し、レスポンス返却をブロックしない
@@ -265,7 +266,7 @@ export async function POST(request: Request, context: RouteContext) {
       console.error('Failed to enqueue reaction job:', enqueueError)
     }
 
-    // 3. 人間投稿の成功レスポンスを即座に返却（返信生成の待ち時間は0ms）
+    // 3. 人間投稿の成功レスポンスを即座に返却（外部生成の完了は待たない）
     return NextResponse.json({
       success: true,
       post: {

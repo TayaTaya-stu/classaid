@@ -6,7 +6,7 @@ html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background:
   --font-scale: 1;
   --comment-color: #ffffff;
   position: absolute;
-  right: -90vw;
+  left: calc(100% - 8px);
   max-width: min(92vw, 1800px);
   padding: calc(6px * var(--font-scale)) calc(12px * var(--font-scale));
   border: 0;
@@ -21,8 +21,9 @@ html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background:
   white-space: nowrap;
   animation: travel var(--travel-time, 12s) linear forwards;
   display: inline-flex;
-  align-items: center;
-  gap: 0.5em;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 0.05em;
 }
 
 .bubble {
@@ -32,6 +33,7 @@ html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background:
 }
 
 .bubble.ai {
+  font-size: .65em;
   color: #72e7ff; /* AI返信であることが直感的に識別しやすい水色トーン */
 }
 
@@ -52,4 +54,4 @@ html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background:
   font-weight: 900;
 }
 
-@keyframes travel { from { transform: translateX(0); } to { transform: translateX(-195vw); } }
+@keyframes travel { from { transform: translateX(0); } to { transform: translateX(var(--exit-distance, -195vw)); } }
