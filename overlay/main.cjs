@@ -8,7 +8,7 @@ let qrWindow = null
 let tray = null
 let isQuitting = false
 let pollTimer = null
-let lastPostId = null
+let lastCursor = null
 let activeConfig = null
 
 const configPath = () => path.join(app.getPath('userData'), 'overlay-config.json')
@@ -174,22 +174,46 @@ async function pollPosts() {
   if (!activeConfig || !overlayWindow || overlayWindow.isDestroyed()) return
   try {
     const parsed = parseScreenUrl(activeConfig.screenUrl)
-    const suffix = lastPostId === null ? '' : `?afterId=${lastPostId}`
+    const suffix = lastCursor === null ? '' : `?afterCursor=${lastCursor}`
+    const fetchStart = Date.now()
     const response = await fetch(`${parsed.origin}/api/screen/${encodeURIComponent(parsed.screenSlug)}/posts${suffix}`)
     const data = await response.json()
     if (!response.ok) throw new Error(data.error || '投稿を取得できませんでした。')
+
+    const events = Array.isArray(data.events) ? data.events : []
     const posts = Array.isArray(data.posts) ? data.posts : []
-    if (lastPostId === null) {
-      lastPostId = posts.at(-1)?.id ?? 0
-    } else if (posts.length) {
-      lastPostId = posts.at(-1).id
+    const nextCursor = data.cursor ?? posts.at(-1)?.id ?? 0
+
+    if (lastCursor === null) {
+      // 意図した仕様: 起動前の古い投稿は一斉に流さず、初期カーソルのみ設定
+      lastCursor = nextCursor
+    } else if (events.length || posts.length) {
+      lastCursor = nextCursor
+
+      // 投影遅延（投稿から投影送信までの時間）の計測
+      const now = Date.now()
+      events.forEach((ev) => {
+        const postTime = new Date(ev.humanPost.createdAt).getTime()
+        const latencyMs = now - postTime
+        console.log(`[Overlay] Event #${ev.cursor} (${ev.eventType}) dispatch latency: ${latencyMs}ms (API fetch: ${now - fetchStart}ms)`)
+      })
+
+      // 新基盤: ペアイベント送信
+      overlayWindow.webContents.send('overlay:events', {
+        events,
+        posts, // 後方互換用
+        durationSeconds: activeConfig.durationSeconds,
+        fontScale: activeConfig.fontScale,
+      })
+
+      // 互換用チャンネル
       overlayWindow.webContents.send('overlay:posts', {
         posts,
         durationSeconds: activeConfig.durationSeconds,
         fontScale: activeConfig.fontScale,
       })
     }
-    controlWindow?.webContents.send('overlay:status', { running: true, message: '接続中', lastPostId })
+    controlWindow?.webContents.send('overlay:status', { running: true, message: '接続中', lastPostId: lastCursor })
   } catch (error) {
     controlWindow?.webContents.send('overlay:status', {
       running: true,
@@ -202,6 +226,7 @@ function stopOverlay() {
   if (pollTimer) clearInterval(pollTimer)
   pollTimer = null
   activeConfig = null
+  lastCursor = null
   lastPostId = null
   if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.close()
   overlayWindow = null
@@ -225,10 +250,11 @@ ipcMain.handle('overlay:start', async (_event, rawConfig) => {
   saveConfig(config)
   stopOverlay()
   activeConfig = config
-  lastPostId = null
+  lastCursor = null
   createOverlayWindow(config)
   await pollPosts()
-  pollTimer = setInterval(() => void pollPosts(), 3000)
+  // 3秒目標に向けてポーリング間隔を1.5秒（1500ms）に最適化
+  pollTimer = setInterval(() => void pollPosts(), 1500)
   return { ok: true }
 })
 

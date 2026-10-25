@@ -86,6 +86,14 @@ export default function Home() {
     setVotedPosts(savedVotes)
   }
   useEffect(() => {
+    async function checkUser() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      console.log('現在のユーザー:', user)
+    }
+
     async function initialize() {
       const {
         data: { session },
@@ -125,14 +133,6 @@ export default function Home() {
 
     hasLoadedPostsRef.current = true
   }, [posts.length])
-
-  async function checkUser() {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    console.log('現在のユーザー:', user)
-  }
 
   async function handlePost() {
     const postingName =

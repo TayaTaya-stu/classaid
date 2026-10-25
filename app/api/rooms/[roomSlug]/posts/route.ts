@@ -229,6 +229,22 @@ export async function POST(request: Request, context: RouteContext) {
       )
     }
 
+    // 返信AIパイプラインの実行（モック生成・投影イベント登録・ログ記録）
+    // 万が一返信処理が失敗しても、人間投稿の成功レスポンスは維持する (fail-safe)
+    const clientSentAt = typeof requestBody.clientSentAt === 'string' ? requestBody.clientSentAt : null
+    try {
+      const { processHumanPostForReactionAi } = await import('@/lib/reaction-ai/service')
+      await processHumanPostForReactionAi({
+        sessionId: session.id,
+        roomId: room.id,
+        humanPostId: newPost.id,
+        humanMessage: trimmedMessage,
+        clientSentAt,
+      })
+    } catch (reactionError) {
+      console.error('Non-blocking reaction AI processing error:', reactionError)
+    }
+
     return NextResponse.json({
       success: true,
       post: {
