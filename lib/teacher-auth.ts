@@ -26,7 +26,20 @@ export function createTeacherToken() {
   return `${value}.${sign(value)}`
 }
 
-export async function isTeacherAuthenticated() {
+export async function isTeacherAuthenticated(request?: Request) {
+  if (request) {
+    const pwd = request.headers.get('x-teacher-password') || request.headers.get('x-projection-key')
+    if (pwd) {
+      if (verifyTeacherPassword(pwd)) return true
+      const adminPwd = process.env.ADMIN_ACCESS_PASSWORD
+      if (adminPwd && adminPwd.length >= 12) {
+        const supplied = Buffer.from(pwd)
+        const expected = Buffer.from(adminPwd)
+        if (supplied.length === expected.length && crypto.timingSafeEqual(supplied, expected)) return true
+      }
+    }
+  }
+
   try {
     const token = (await cookies()).get(TEACHER_COOKIE_NAME)?.value
     if (!token) return false

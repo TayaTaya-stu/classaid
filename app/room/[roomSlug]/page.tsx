@@ -3,11 +3,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { groupPostsWithReplies, retainChatPairs } from '@/lib/chat-pairs'
 
 interface PostItem {
   id: number
   authorDisplayName: string
   authorType: 'human' | 'ai'
+  parentId?: number | null
   message: string
   createdAt: string
   likesCount: number
@@ -22,7 +24,7 @@ export default function RoomChatPage() {
 
   const [posts, setPosts] = useState<PostItem[]>([])
   const [displayName, setDisplayName] = useState<string>('')
-  const [roomLabel, setRoomLabel] = useState<string>('')
+  const [showAiReplies, setShowAiReplies] = useState(true)
   const [isSessionLocked, setIsSessionLocked] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isSending, setIsSending] = useState(false)
@@ -36,6 +38,7 @@ export default function RoomChatPage() {
   const isInitialScrollDoneRef = useRef(false)
   const lastFullRefreshRef = useRef(0)
   const postsRef = useRef<PostItem[]>([])
+  const sendRequestRef = useRef<{id:string;text:string}|null>(null)
 
   useEffect(() => {
     postsRef.current = posts
@@ -50,14 +53,14 @@ export default function RoomChatPage() {
       const currentPosts = postsRef.current
       const newestId = currentPosts.length > 0 ? currentPosts[currentPosts.length - 1].id : null
       const shouldFetchFull = forceFull || newestId === null || Date.now() - lastFullRefreshRef.current >= 60_000
-      const query = shouldFetchFull ? '' : `?afterId=${newestId}`
+      const query = shouldFetchFull ? '' : `?afterId=${newestId}&visibleIds=${currentPosts.map(p=>p.id).join(',')}`
       const res = await fetch(`/api/rooms/${encodeURIComponent(roomSlug)}/posts${query}`, {
-        cache: 'no-store',
+        cache: 'no-store', signal: AbortSignal.timeout(10000),
       })
 
       if (res.status === 403 || res.status === 401) {
         // 認証切れまたは不正アクセスの場合は入室案内へ
-        router.push('/enter')
+        setPosts([]); setIsSessionLocked(true); router.replace('/join')
         return
       }
 
@@ -71,11 +74,13 @@ export default function RoomChatPage() {
       const data = await res.json()
       if (data.resultMode === 'delta') {
         setPosts((current) => {
+          const updates=new Map<number,{likesCount:number;isLiked:boolean}>((data.likeUpdates||[]).map((x:{id:number;likesCount:number;isLiked:boolean})=>[x.id,x]))
+          current=current.map(post=>({...post,...updates.get(post.id)}))
           const known = new Set(current.map((post) => post.id))
-          return [...current, ...(data.posts || []).filter((post: PostItem) => !known.has(post.id))].slice(-100)
+          return retainChatPairs([...current, ...(data.posts || []).filter((post: PostItem) => !known.has(post.id))])
         })
       } else {
-        setPosts(data.posts || [])
+        setPosts(retainChatPairs(data.posts || []))
         lastFullRefreshRef.current = Date.now()
       }
       setSyncErrorMessage(null)
@@ -83,7 +88,6 @@ export default function RoomChatPage() {
       if (data.currentUser?.displayName) {
         setDisplayName(data.currentUser.displayName)
       }
-      if (typeof data.roomLabel === 'string') setRoomLabel(data.roomLabel)
       setIsLoading(false)
 
       // 初回のみ最下部へスクロール
@@ -135,13 +139,24 @@ export default function RoomChatPage() {
 
     setIsSending(true)
     setErrorMessage(null)
-
     try {
+      const text = messageText.trim()
+      if (!sendRequestRef.current || sendRequestRef.current.text !== text) {
+        // getRandomValues is available on LAN HTTP too; randomUUID requires HTTPS.
+        const bytes = new Uint8Array(16)
+        globalThis.crypto.getRandomValues(bytes)
+        bytes[6] = (bytes[6] & 0x0f) | 0x40
+        bytes[8] = (bytes[8] & 0x3f) | 0x80
+        const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')
+        const id = `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`
+        sendRequestRef.current = { id, text }
+      }
+      const requestId = sendRequestRef.current.id
       const res = await fetch(`/api/rooms/${encodeURIComponent(roomSlug)}/posts`, {
-        method: 'POST',
+        method: 'POST', signal: AbortSignal.timeout(10000),
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: messageText.trim(),
+          message: text, requestId, clientSentAt: new Date().toISOString(),
         }),
       })
 
@@ -154,7 +169,7 @@ export default function RoomChatPage() {
       }
 
       // 送信成功
-      setMessageText('')
+      setMessageText(''); sendRequestRef.current = null
       setIsSending(false)
 
       // 即座に最新リストを取得し最下部へスムーズスクロール
@@ -190,14 +205,14 @@ export default function RoomChatPage() {
 
     try {
       const res = await fetch(`/api/rooms/${encodeURIComponent(roomSlug)}/likes`, {
-        method: 'POST',
+        method: 'POST', signal: AbortSignal.timeout(10000),
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ postId }),
+        body: JSON.stringify({ postId, liked: !postsRef.current.find(p=>p.id===postId)?.isLiked }),
       })
 
       if (!res.ok) {
         // 失敗時はサーバー側の正本を取得してロールバック
-        await fetchPosts()
+        await fetchPosts(true)
         return
       }
 
@@ -215,7 +230,7 @@ export default function RoomChatPage() {
         })
       )
     } catch {
-      await fetchPosts()
+      await fetchPosts(true)
     } finally {
       setIsLikingId(null)
     }
@@ -231,18 +246,19 @@ export default function RoomChatPage() {
     }
   }
 
+  const visiblePosts = showAiReplies ? posts : posts.filter(post => post.authorType === 'human')
+
   return (
     <div className="flex flex-col h-screen bg-slate-100 text-slate-800 antialiased font-sans">
       {/* 1. ヘッダー */}
       <header className="sticky top-0 z-20 bg-white/95 backdrop-blur-sm border-b border-slate-200 px-4 py-2.5 flex items-center justify-between shadow-xs">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-lg bg-blue-600 text-white font-bold text-sm flex items-center justify-center shrink-0">
-            C
-          </div>
           <div className="min-w-0">
-            <h1 className="text-sm font-bold text-slate-900 truncate">講義タイムライン</h1>
-            <div className="flex items-center gap-2 text-[11px] text-slate-500">
-              {roomLabel && <span className="font-semibold text-slate-700">参加中：ルーム{roomLabel}</span>}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-black tracking-wider text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">SupporTalk</span>
+              <h1 className="text-sm font-bold text-slate-900 truncate">授業チャット</h1>
+            </div>
+            <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5">
               <span>
                 表示名: <strong className="text-blue-700 font-semibold">{displayName || '参加者'}</strong>
               </span>
@@ -265,6 +281,11 @@ export default function RoomChatPage() {
         </div>
       </header>
 
+      <div role="group" aria-label="チャットの表示切替" className="flex shrink-0 gap-2 border-b border-slate-200 bg-white px-4 py-2">
+        <button type="button" aria-pressed={showAiReplies} onClick={() => setShowAiReplies(true)} className={`rounded-full border px-4 py-1.5 text-xs font-semibold ${showAiReplies ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-600'}`}>すべて</button>
+        <button type="button" aria-pressed={!showAiReplies} onClick={() => setShowAiReplies(false)} className={`rounded-full border px-4 py-1.5 text-xs font-semibold ${!showAiReplies ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-600'}`}>人間の投稿のみ</button>
+      </div>
+
       {/* 2. 投稿一覧タイムライン */}
       <main className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3">
         {isLoading ? (
@@ -272,27 +293,34 @@ export default function RoomChatPage() {
             <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
             <p className="text-xs">タイムラインを読み込み中...</p>
           </div>
-        ) : posts.length === 0 ? (
+        ) : visiblePosts.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-48 text-center text-slate-400 p-4">
             <p className="text-sm font-medium mb-1">まだ投稿がありません</p>
             <p className="text-xs">授業中の気づきや質問を最初に投稿してみましょう！</p>
           </div>
         ) : (
-          posts.map((post) => {
+          groupPostsWithReplies(visiblePosts).map((group) => (
+            <section key={group.post.id} className="space-y-2" aria-label="投稿と返信">
+            {[group.post, ...group.replies].map((post) => {
             const isAi = post.authorType === 'ai'
             const isSelf = post.authorDisplayName === displayName
 
             return (
               <div
                 key={post.id}
-                className={`bg-white rounded-xl p-3 sm:p-3.5 shadow-xs border transition-colors ${
+                className={`rounded-xl p-3 sm:p-3.5 shadow-xs border transition-colors ${
                   isAi
-                    ? 'border-indigo-200 bg-indigo-50/20'
+                    ? 'relative ml-5 sm:ml-8 border-sky-200 bg-sky-50'
                     : isSelf
-                    ? 'border-blue-200/90'
-                    : 'border-slate-200/80'
+                    ? 'bg-white border-blue-200/90'
+                    : 'bg-white border-slate-200/80'
                 }`}
               >
+                {isAi && group.post.authorType === 'human' && (
+                  <svg aria-hidden="true" className="absolute -left-4 -top-3 h-7 w-4 text-sky-400" viewBox="0 0 16 28" fill="none">
+                    <path d="M2 1v11q0 5 5 5h6m-4-4 4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
                 {/* 投稿ヘッダー: 投稿者名と時間 */}
                 <div className="flex items-center justify-between gap-2 mb-1.5">
                   <div className="flex items-center gap-1.5">
@@ -355,7 +383,9 @@ export default function RoomChatPage() {
 
               </div>
             )
-          })
+          })}
+            </section>
+          ))
         )}
         <div ref={feedEndRef} />
       </main>
@@ -422,8 +452,8 @@ export default function RoomChatPage() {
               </button>
             </div>
 
-            <div className="flex justify-between items-center text-[10px] text-slate-400 px-1">
-              <span>※ アイコン・個人を特定する学籍番号は表示されません</span>
+            <div className="flex justify-end items-center text-[10px] text-slate-400 px-1">
+
               <span className={messageText.length > 450 ? 'text-amber-600 font-semibold' : ''}>
                 {messageText.length}/500
               </span>

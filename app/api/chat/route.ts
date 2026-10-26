@@ -1,11 +1,4 @@
-import { NextResponse } from "next/server";
-
-export async function POST(req: Request) {
-
-  const body = await req.json();
-
-  return NextResponse.json({
-    reply: `AI：「${body.message}」について一緒に考えてみよう！`
-  });
-
-}
+import { NextResponse } from 'next/server'
+const retired=()=>NextResponse.json({error:'この旧機能は使用しません。'},{status:410})
+export const GET=retired
+export const POST=retired

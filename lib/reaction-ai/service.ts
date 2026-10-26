@@ -1,14 +1,27 @@
 import 'server-only'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import type { ReactionAiMode, ReactionSessionConfig, ProjectionEventDTO, ProcessReactionResult } from './types'
-import { MOCK_REPLIES, FALLBACK_REPLIES } from './replies'
+import { MOCK_REPLIES } from './replies'
+import { generateReactionReply } from './generator'
 
-type Job = { id: string; session_id: string; room_id: string; human_post_id: number; mode: ReactionAiMode; lease_token: string }
+type Job = { id: string; session_id: string; room_id: string; human_post_id: number; mode: ReactionAiMode; lease_token: string; client_sent_at?: string|null }
 export async function getReactionSessionConfig(sessionId: string): Promise<ReactionSessionConfig> {
- const { data, error } = await supabaseAdmin.from('sessions').select('reaction_ai_mode,reaction_ai_status,is_mock_ai,lecture_theme,reaction_pipeline_enabled').eq('id',sessionId).single()
+ const { data, error } = await supabaseAdmin
+   .from('sessions')
+   .select('reaction_ai_mode,reaction_ai_status,is_mock_ai,lecture_theme,reaction_pipeline_enabled,class_started_at,auto_expired_at,status')
+   .eq('id', sessionId)
+   .single()
  if(error || !data) throw new Error('Session configuration unavailable')
  if(!['off','empathy','lecture_bridge','neutral'].includes(data.reaction_ai_mode) || !['active','stopped'].includes(data.reaction_ai_status) || typeof data.is_mock_ai !== 'boolean') throw new Error('Invalid session configuration')
- return { mode:data.reaction_ai_mode, status:data.reaction_ai_status,isMockAi:data.is_mock_ai,lectureTheme:data.lecture_theme }
+ return {
+   mode: data.reaction_ai_mode,
+   status: data.reaction_ai_status,
+   isMockAi: data.is_mock_ai,
+   lectureTheme: data.lecture_theme,
+   classStartedAt: data.class_started_at,
+   autoExpiredAt: data.auto_expired_at,
+   sessionStatus: data.status,
+ }
 }
 // The post INSERT trigger durably enqueues jobs, including when the process stops before after().
 export async function enqueueReplyJob(params: { sessionId:string; roomId:string; humanPostId:number; mode:ReactionAiMode }): Promise<string|null> {
@@ -39,19 +52,67 @@ export async function executeReactionJob(params:{jobId?:string|null;sessionId:st
  const started=Date.now()
  try {
   const config=await getReactionSessionConfig(job.session_id)
-  const {data:post,error}=await supabaseAdmin.from('posts').select('message').eq('id',job.human_post_id).eq('session_id',job.session_id).eq('room_id',job.room_id).eq('author_type','human').eq('is_deleted',false).single()
+  const {data:post,error}=await supabaseAdmin.from('posts').select('message,created_at').eq('id',job.human_post_id).eq('session_id',job.session_id).eq('room_id',job.room_id).eq('author_type','human').eq('is_deleted',false).single()
   if(error||!post) throw new Error('Job parent unavailable')
-  const paired=job.mode!=='off' && config.status!=='stopped'
+
+  // 120分期限および終了状態の事前判定（期限切れ時は実AI生成を完全にバイパス）
+  const classStartedAt = config.classStartedAt ? new Date(config.classStartedAt).getTime() : null
+  const is120mExpired = Boolean(
+    config.autoExpiredAt ||
+    (classStartedAt !== null && Date.now() >= classStartedAt + 120 * 60 * 1000)
+  )
+  const isClosed = config.sessionStatus === 'completed' || config.sessionStatus === 'closed' || is120mExpired
+
+  if (is120mExpired && !config.autoExpiredAt) {
+    void supabaseAdmin.rpc('check_or_expire_120m', { p_session_id: job.session_id })
+  }
+
+  const paired = job.mode !== 'off' && config.status !== 'stopped' && !isClosed
   if(config.mode!==job.mode) throw new Error('Job mode differs from session mode')
   const mode=job.mode as Exclude<ReactionAiMode,'off'>
-  const source=paired ? (config.isMockAi?'mock':'fallback'):'none'
-  const text=!paired?null:config.isMockAi?MOCK_REPLIES[mode](post.message):FALLBACK_REPLIES[mode][0].text
+
+  let text: string | null = null
+  let source: 'mock' | 'generated' | 'fallback' | 'none' = 'none'
+  let fallbackId: string | null = null
+  let contextData: Record<string, unknown> = { lecture_theme: config.lectureTheme }
+
+  if (paired) {
+    if (config.isMockAi) {
+      source = 'mock'
+      text = MOCK_REPLIES[mode](post.message)
+    } else {
+      const configured=Number(process.env.REACTION_REPLY_CALL_LIMIT||3000)
+      const limit=Number.isInteger(configured)&&configured>=1&&configured<=100000?configured:3000
+      const {data:reserved,error:budgetError}=await supabaseAdmin.rpc('reserve_reaction_generation',{p_session_id:job.session_id,p_limit:limit,p_kind:'reply'})
+      const gen = await generateReactionReply({
+        sessionId:job.session_id,mode,studentMessage:post.message,
+        lectureTheme:config.lectureTheme,postedAt:post.created_at,
+        ...(budgetError||!reserved ? {fallbackReason:budgetError?'budget_unavailable':'generation_limit'} : {}),
+      })
+      source = gen.source
+      text = gen.text
+      fallbackId = gen.fallbackId
+      contextData = {
+        ...contextData,
+        ...gen.contextMetadata,
+        model_name: gen.modelName,
+        prompt_version: (gen.contextMetadata.promptVersion as string) || (gen.source === 'generated' ? 'v3-prod' : 'fallback-v3'),
+      }
+    }
+  }
+
+  if (!paired && job.mode!=='off' && !isClosed) {
+    const fallback=await generateReactionReply({sessionId:job.session_id,mode,studentMessage:post.message,postedAt:post.created_at,fallbackReason:'paused_at_generation'})
+    text=fallback.text;source='fallback';fallbackId=fallback.fallbackId
+    contextData={...contextData,...fallback.contextMetadata,model_name:fallback.modelName,prompt_version:fallback.contextMetadata.promptVersion}
+  }
   const {data:result,error:finishError}=await supabaseAdmin.rpc('finish_reaction_job',{
    p_job_id:job.id,p_lease:job.lease_token,p_text:text,p_source:source,
-   p_fallback_id:source==='fallback'?FALLBACK_REPLIES[mode][0].id:null,
-   p_duration:Date.now()-started,p_context:{phase:1,real_generation_implemented:false,lecture_theme:config.lectureTheme},
-   p_client_sent_at:params.clientSentAt && Number.isFinite(Date.parse(params.clientSentAt)) ? params.clientSentAt:null
+   p_fallback_id:fallbackId,
+   p_duration:Date.now()-started,p_context:contextData,
+   p_client_sent_at:(params.clientSentAt||job.client_sent_at)&&Number.isFinite(Date.parse((params.clientSentAt||job.client_sent_at)!))?(params.clientSentAt||job.client_sent_at):null
   })
+  if(!finishError&&result?.job_status==='failed')return {projectionEventId:0,aiPostId:null,mode:job.mode,sourceType:'none',isPaired:false,jobStatus:'failed'}
   if(finishError || !result?.event_id) throw new Error('Atomic job finalization failed')
   return {projectionEventId:result.event_id,aiPostId:result.ai_post_id,mode:job.mode,sourceType:source,isPaired:!!result.ai_post_id,jobStatus:'completed'}
  } catch(error) {
@@ -148,4 +209,13 @@ export async function getProjectionEvents(params: {
 
   const nextCursor = orderedEvents.at(-1)?.id ?? afterCursor
   return { events: dtos, nextCursor }
+}
+
+export async function recoverSessionJobs(sessionId:string) {
+ const {data,error}=await supabaseAdmin.rpc('claim_session_reaction_jobs',{p_session_id:sessionId,p_limit:4})
+ if(error)throw new Error('Reply recovery unavailable')
+ await Promise.all((data||[]).map(async(job:Job)=>{
+  try {await executeReactionJob({jobId:job.id,sessionId:job.session_id,roomId:job.room_id,humanPostId:job.human_post_id,humanMessage:'',claimedJob:job})}
+  catch {console.error('Reply recovery failed; retry count is bounded')}
+ }))
 }

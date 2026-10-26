@@ -41,6 +41,66 @@ export function generateIdentityHash(normalizedId: string): string {
     .digest('hex')
 }
 
+/**
+ * 表示名の正規化。
+ * 学籍番号ではなく、任意の参加者名を扱うために使う。
+ */
+export function normalizeDisplayName(rawName: string): string {
+  if (typeof rawName !== 'string') return ''
+
+  return rawName
+    .normalize('NFKC')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+export function normalizeDisplayNameKey(rawName: string): string {
+  return normalizeDisplayName(rawName).toLowerCase()
+}
+
+export function generateParticipantIdentityHash(seed: string): string {
+  const secret = process.env.PARTICIPANT_HMAC_SECRET
+
+  if (!secret || secret.trim().length === 0) {
+    throw new Error('PARTICIPANT_HMAC_SECRET is not configured in environment variables.')
+  }
+
+  const normalizedSeed = typeof seed === 'string' ? seed.trim() : ''
+  if (!normalizedSeed) {
+    throw new Error('Participant identity seed is empty.')
+  }
+
+  return crypto
+    .createHmac('sha256', secret)
+    .update(normalizedSeed)
+    .digest('hex')
+}
+
+export function hashRecoveryCode(code: string): string {
+  const secret = process.env.PARTICIPANT_HMAC_SECRET
+
+  if (!secret || secret.trim().length === 0) {
+    throw new Error('PARTICIPANT_HMAC_SECRET is not configured in environment variables.')
+  }
+
+  const normalizedCode = typeof code === 'string' ? code.trim().toUpperCase() : ''
+  if (!normalizedCode) {
+    throw new Error('Recovery code is empty.')
+  }
+
+  return crypto.createHmac('sha256', secret).update(normalizedCode).digest('hex')
+}
+
+export function generateRecoveryCode(): string {
+  return crypto.randomBytes(16).toString('hex').toUpperCase()
+}
+
+export function initialRecoveryCode(authUserId: string): string {
+  const secret = process.env.PARTICIPANT_HMAC_SECRET
+  if (!secret) throw new Error('PARTICIPANT_HMAC_SECRET is missing')
+  return crypto.createHmac('sha256', secret).update(`initial-recovery:v2:${authUserId}`).digest('hex').slice(0, 32).toUpperCase()
+}
+
 export type ParticipantSessionPayload = {
   participantId: string
   authUserId: string

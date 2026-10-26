@@ -11,6 +11,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    "review-current*/**",
+    "*-review-extract/**",
+    "scratch/**",
   ]),
   // Electron CommonJS スクリプト向け設定 (require()を許可し、構文・未使用変数は厳格に検査)
   {

@@ -9,6 +9,9 @@ export interface ReactionSessionConfig {
   isMockAi: boolean
   lectureTheme: string | null
   protocolSnapshot?: Record<string, unknown> | null
+  classStartedAt?: string | null
+  autoExpiredAt?: string | null
+  sessionStatus?: string | null
 }
 
 export interface PostRecord {

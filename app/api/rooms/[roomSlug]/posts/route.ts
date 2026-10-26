@@ -30,10 +30,11 @@ export async function GET(request: Request, context: RouteContext) {
     const afterParam = new URL(request.url).searchParams.get('afterId')
     const afterId = afterParam && /^\d+$/.test(afterParam) ? Number(afterParam) : null
 
-    // 初回・定期全件更新は最新100件、通常のポーリングは前回以降の差分だけを取得する。
+    // Fetch at most 100 base messages, then restore any missing human parents.
+    const postColumns = 'id, author_display_name, author_type, is_ai, message, audience_type, created_at, likes, parent_id'
     let postsQuery = supabaseAdmin
       .from('posts')
-      .select('id, author_display_name, author_type, is_ai, message, audience_type, created_at')
+      .select(postColumns)
       .eq('room_id', room.id)
       .eq('is_deleted', false)
 
@@ -51,33 +52,33 @@ export async function GET(request: Request, context: RouteContext) {
     }
 
     // クライアントへ返す前に時系列昇順（古い順）へ反転
-    const postList = afterId !== null ? (rawPosts || []) : (rawPosts || []).slice().reverse()
-    const postIds = postList.map((p) => p.id)
-
-    // 2. いいね情報の集計（DBエラーは無視せず500として処理）
-    const likeCounts: Record<number, number> = {}
-    const likedPostIds = new Set<number>()
-
-    if (postIds.length > 0) {
-      const { data: likesData, error: likesError } = await supabaseAdmin
-        .from('post_likes')
-        .select('post_id, participant_id')
-        .in('post_id', postIds)
-
-      if (likesError) {
-        return NextResponse.json(
-          { error: 'いいね情報の集計に失敗しました。' },
-          { status: 500 }
-        )
-      }
-
-      likesData?.forEach((like) => {
-        likeCounts[like.post_id] = (likeCounts[like.post_id] || 0) + 1
-        if (like.participant_id === participant.id) {
-          likedPostIds.add(like.post_id)
-        }
-      })
+    let postList = afterId !== null ? (rawPosts || []) : (rawPosts || []).slice().reverse()
+    const presentIds = new Set(postList.map(post=>post.id))
+    const missingParents = [...new Set(postList.filter(post=>post.author_type==='ai'&&post.parent_id&&!presentIds.has(post.parent_id)).map(post=>post.parent_id!))]
+    if(missingParents.length){
+      const {data:parents,error:parentError}=await supabaseAdmin.from('posts').select(postColumns)
+        .eq('room_id',room.id).eq('session_id',session.id).eq('author_type','human').eq('is_deleted',false).in('id',missingParents)
+      if(parentError)return NextResponse.json({error:'返信元の投稿を確認できません。'},{status:503})
+      postList=[...(parents||[]),...postList].sort((a,b)=>a.id-b.id)
     }
+
+    const rawVisible=new URL(request.url).searchParams.get('visibleIds')||''
+    if(rawVisible.length>4400)return NextResponse.json({error:'表示対象が多すぎます。'},{status:400})
+    const visible=rawVisible?rawVisible.split(',').filter(x=>/^\d+$/.test(x)).map(Number).filter(Number.isSafeInteger).slice(-200):[]
+    const snapshots=new Map<number,number>(postList.map(p=>[p.id,Number(p.likes)||0]))
+    if(afterId!==null&&visible.length){
+      const {data:oldRows,error:oldError}=await supabaseAdmin.from('posts').select('id,likes').eq('room_id',room.id).eq('is_deleted',false).in('id',visible)
+      if(oldError)return NextResponse.json({error:'いいね数を確認できません。'},{status:503})
+      for(const row of oldRows||[])snapshots.set(row.id,Number(row.likes)||0)
+    }
+    const likeCounts:Record<number,number>=Object.fromEntries(snapshots)
+    const likedPostIds=new Set<number>()
+    if(snapshots.size){
+      const {data:mine,error:likeError}=await supabaseAdmin.from('post_likes').select('post_id').eq('participant_id',participant.id).in('post_id',[...snapshots.keys()])
+      if(likeError)return NextResponse.json({error:'いいねを確認できません。'},{status:503})
+      for(const row of mine||[])likedPostIds.add(row.post_id)
+    }
+    const likeUpdates=[...snapshots].map(([id,count])=>({id,likesCount:count,isLiked:likedPostIds.has(id)}))
 
     // 3. クライアントへ返す安全なDTOの組み立て
     const posts = postList.map((post) => {
@@ -88,6 +89,7 @@ export async function GET(request: Request, context: RouteContext) {
         authorDisplayName: isAi ? '学生AI' : post.author_display_name,
         authorType: isAi ? ('ai' as const) : ('human' as const),
         message: post.message,
+        parentId: post.parent_id ?? null,
         createdAt: post.created_at,
         likesCount: likeCounts[post.id] || 0,
         isLiked: likedPostIds.has(post.id),
@@ -96,7 +98,7 @@ export async function GET(request: Request, context: RouteContext) {
     })
 
     return NextResponse.json({
-      posts,
+      posts, likeUpdates,
       resultMode: afterId !== null ? 'delta' : 'full',
       isSessionLocked: session.isLocked || ['completed', 'locked'].includes(session.status),
       currentUser: {
@@ -127,7 +129,7 @@ export async function POST(request: Request, context: RouteContext) {
       )
     }
 
-    const { room, session, participant } = roomAccess
+    const { room, session, participant, authUserId } = roomAccess
 
     // セッション終了・ロック状態の確認
     if (session.isLocked || ['completed', 'locked'].includes(session.status)) {
@@ -136,6 +138,11 @@ export async function POST(request: Request, context: RouteContext) {
         { status: 403 }
       )
     }
+
+    const { data: postingConfig, error: postingConfigError } = await supabaseAdmin.from('sessions')
+      .select('reaction_pipeline_enabled').eq('id', session.id).single()
+    if (postingConfigError) return NextResponse.json({ error: '投稿設定を確認できません。' }, { status: 503 })
+    if (!postingConfig.reaction_pipeline_enabled) return NextResponse.json({ error: '試運転開始前です。開始までお待ちください。' }, { status: 409 })
 
     let body: unknown
     try {
@@ -181,46 +188,18 @@ export async function POST(request: Request, context: RouteContext) {
       )
     }
 
-    // 2. 直近の二重送信防止チェック（同一参加者が同一ルーム・同一本文を3秒以内に連投していないか）
-    const threeSecondsAgo = new Date(Date.now() - 3000).toISOString()
-    const { data: recentDuplicate } = await supabaseAdmin
-      .from('posts')
-      .select('id')
-      .eq('room_id', room.id)
-      .eq('participant_id', participant.id)
-      .eq('message', trimmedMessage)
-      .gte('created_at', threeSecondsAgo)
-      .limit(1)
-
-    if (recentDuplicate && recentDuplicate.length > 0) {
-      return NextResponse.json(
-        { error: '同じ内容が送信されました。連続送信はお控えください。' },
-        { status: 429 }
-      )
+    const requestId = requestBody.requestId
+    if (typeof requestId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)) {
+      return NextResponse.json({ error: '画面を更新してから再送信してください。' }, { status: 400 })
     }
-
-    // 3. サーバー側による安全な投稿レコードの作成
-    // 学生画面で投稿先を選ばせず、常に共有ルーム全体向けとする。
-    const { data: newPost, error: insertError } = await supabaseAdmin
-      .from('posts')
-      .insert({
-        session_id: session.id,
-        room_id: room.id,
-        participant_id: participant.id,
-        author_type: 'human',
-        author_display_name: participant.displayName,
-        name: participant.displayName, // 既存互換カラム
-        message: trimmedMessage,
-        is_ai: false, // 既存互換カラム
-        likes: 0,
-        dislikes: 0,
-        parent_id: null,
-        reply_target_type: 'none',
-        audience_type: 'room',
-        is_deleted: false,
-      })
-      .select('id, created_at')
-      .single()
+    const { data: newPost, error: insertError } = await supabaseAdmin.rpc('submit_reaction_post', {
+      p_session_id: session.id, p_room_id: room.id, p_participant_id: participant.id,
+      p_auth_user_id: authUserId, p_request_id: requestId, p_message: trimmedMessage,
+      p_client_sent_at:typeof requestBody.clientSentAt==='string'&&Number.isFinite(Date.parse(requestBody.clientSentAt))?new Date(requestBody.clientSentAt).toISOString():null,
+    })
+    if (insertError?.message.includes('post_rate_limited'))return NextResponse.json({error:'送信が集中しています。少し待って再送信してください。'},{status:429})
+    if (insertError?.message.includes('session_closed')) return NextResponse.json({error:'この授業は終了しました。今回のQRから入り直してください。'},{status:409})
+    if (insertError?.message.includes('request_conflict')) return NextResponse.json({error:'前の送信結果を確認してから、画面を更新してください。'},{status:409})
 
     if (insertError || !newPost) {
       return NextResponse.json(

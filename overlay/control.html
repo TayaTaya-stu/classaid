@@ -3,45 +3,185 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>授業コメント投影</title>
+  <title>SupporTalk 教授用アプリ</title>
   <link rel="stylesheet" href="control.css">
 </head>
 <body>
-  <main>
-    <p class="eyebrow">CLASSROOM COMMENT OVERLAY</p>
-    <h1>授業コメント投影</h1>
-    <p class="lead">PowerPointやPDFの上に、新着コメントだけを一時表示します。</p>
+  <div class="app-container">
+    <!-- ヘッダー -->
+    <header class="app-header">
+      <div class="header-titles">
+        <span class="app-badge">SupporTalk</span>
+        <h1 class="app-title">授業運営コントロール</h1>
+      </div>
+      <button id="btnOpenAdmin" class="btn-corner" type="button" title="ブラウザで管理者画面を開きます">管理者画面へ ↗</button>
+    </header>
 
-    <label>投影画面URL
-      <input id="screenUrl" type="url" placeholder="https://…/screen/…" autocomplete="off">
-    </label>
-    <label>表示する画面
-      <select id="displayId"></select>
-    </label>
-    <div class="row">
-      <label>表示秒数
-        <input id="durationSeconds" type="number" min="5" max="30" value="12">
-      </label>
-      <label>文字サイズ
-        <select id="fontScale">
-          <option value="0.8">小さめ</option>
-          <option value="1" selected>標準</option>
-          <option value="1.2">大きめ</option>
-          <option value="1.4">特大</option>
-        </select>
-      </label>
+    <details id="connectionSettings" class="advanced-details">
+      <summary class="advanced-summary">初回の接続設定（実験者が設定）</summary>
+      <div class="advanced-body">
+        <label for="serverOrigin">接続先</label>
+        <input id="serverOrigin" class="input-secondary" type="url" placeholder="https://...">
+        <label for="teacherPassword">教授用パスワード</label>
+        <input id="teacherPassword" class="input-secondary" type="password" autocomplete="off">
+        <button id="btnSaveConnection" type="button">接続して保存</button>
+        <p id="connectionMessage"></p>
+      </div>
+    </details>
+    <!-- 授業回選択・確認カード -->
+    <section class="card session-card">
+      <div class="card-header">
+        <h2 class="card-title">授業回の確認</h2>
+        <strong id="classStateBadge" class="class-state-badge">開始前</strong>
+        <span id="targetBadge" class="badge-target" style="display: none;">★ 今回指定の授業回</span>
+      </div>
+
+      <div class="form-group">
+        <label for="sessionSelect" class="form-label">実施する授業回</label>
+        <select id="sessionSelect" class="select-primary"></select>
+      </div>
+
+      <!-- 授業詳細情報グリッド -->
+      <div class="session-meta-grid">
+        <div class="meta-item">
+          <span class="meta-label">実施予定日時</span>
+          <span id="metaSchedule" class="meta-value">-</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">AI実験条件</span>
+          <span id="metaAiMode" class="meta-value"><span class="badge badge-gray">-</span></span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">講義スライド (PDF)</span>
+          <span id="metaPdf" class="meta-value text-muted">未設定</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">授業状態</span>
+          <span id="metaStatus" class="meta-value">未開始</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- QRコード操作 & 大ボタン -->
+    <section class="main-actions-section">
+      <button id="btnToggleQr" class="btn-secondary btn-qr" type="button">
+        <span class="icon">📱</span>
+        <span id="qrBtnText">学生入室QRコードを表示</span>
+      </button>
+
+      <button id="btnStartClass" class="btn-primary-large" type="button">
+        <span class="btn-start-title">授業を開始する</span>
+        <span class="btn-start-subtitle">（設定済みAI・音声取得・透明投影を連動開始）</span>
+      </button>
+    </section>
+
+    <!-- 部分的エラー再試行バナー（失敗時のみ表示） -->
+    <div id="micErrorBanner" class="alert-banner alert-warning" style="display: none;">
+      <div class="alert-content">
+        <span class="alert-icon">🎙️</span>
+        <div class="alert-text">
+          <strong>マイク音声の取得に失敗しました</strong>
+          <p id="micErrorMsg" class="alert-desc">マイクの接続やアクセス許可を確認してください。チャットと投影は継続中です。</p>
+        </div>
+      </div>
+      <button id="btnRetryMic" class="btn-retry" type="button">マイクを再試行</button>
     </div>
 
-    <div class="actions">
-      <button id="start" class="primary">投影を開始</button>
-      <button id="stop">停止</button>
-      <button id="test">テスト表示</button>
-      <button id="showQr">QRを常時表示</button>
-      <button id="openScreen">ブラウザでQRを開く</button>
+    <div id="projectionErrorBanner" class="alert-banner alert-warning" style="display: none;">
+      <div class="alert-content">
+        <span class="alert-icon">🖥️</span>
+        <div class="alert-text">
+          <strong>投影画面の起動に失敗しました</strong>
+          <p id="projectionErrorMsg" class="alert-desc">ディスプレイ設定を確認して再試行してください。</p>
+        </div>
+      </div>
+      <button id="btnRetryProjection" class="btn-retry" type="button">投影を再試行</button>
     </div>
-    <div id="status" class="status">停止中</div>
-    <p class="note">投影中の透明画面はクリックを通すため、背後のスライドを普段どおり操作できます。最初の取得時は過去投稿を流さず、開始後の新着だけを表示します。</p>
-  </main>
+
+    <!-- 授業中コントロール（進行中に操作可能） -->
+    <section id="runningControls" class="card controls-card" style="display: none;">
+      <div class="card-header">
+        <h2 class="card-title">授業中の操作</h2>
+
+      </div>
+
+      <div class="countdown-panel">
+        <div class="class-headline"><div id="countdownBadge" class="countdown-badge">授業中</div><span id="elapsedTime" class="elapsed-time"></span></div>
+        <div id="countdownTiming" class="countdown-timing"></div>
+        <p class="auto-stop-note">開始から120分で、AI・音声・投影が自動停止します。</p>
+      </div>
+      <div class="sub-actions-grid">
+        <button id="btnToggleAi" class="btn-sub" type="button">
+          <span class="sub-icon">🤖</span>
+          <span id="aiBtnText">AIのみ停止</span>
+        </button>
+        <button id="btnToggleProjection" class="btn-sub" type="button">
+          <span class="sub-icon">🖥️</span>
+          <span id="projBtnText">投影のみ停止</span>
+        </button>
+        <button id="btnDemoTest" class="btn-sub" type="button">
+          <span class="sub-icon">🧪</span>
+          <span>テスト表示（デモ投影）</span>
+        </button>
+        <button id="btnEndClass" class="btn-sub btn-danger" type="button">
+          <span class="sub-icon">⏹️</span>
+          <span>授業を完全終了</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- 稼働ステータスサマリー -->
+    <section class="status-summary">
+      <div class="status-indicator">
+        <span id="dotOverall" class="dot dot-idle"></span>
+        <span id="statusText">未開始（授業回を確認して「授業を開始する」を押してください）</span>
+      </div>
+      <div class="status-pills">
+        <span id="pillAi" class="pill">AI: 待機中</span>
+        <span id="pillAudio" class="pill">音声: 待機中</span>
+        <span id="pillProj" class="pill">投影: 待機中</span>
+      </div>
+    </section>
+
+    <!-- 詳細設定（通常時は折りたたみ） -->
+    <details class="advanced-details">
+      <summary class="advanced-summary">⚙️ 投影ディスプレイ・表示詳細設定</summary>
+      <div class="advanced-body">
+      <div class="form-group" style="margin:12px 0">
+        <label for="displayId" class="form-label">コメントを表示する画面</label>
+        <select id="displayId" class="select-secondary"></select>
+        <p style="font-size:12px">通常はPC画面のままで使えます。拡張表示で投影先が違うときだけ変更してください。</p>
+      </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="durationSeconds" class="form-label">字幕表示秒数</label>
+            <input id="durationSeconds" type="number" min="5" max="30" value="12" class="input-secondary">
+          </div>
+          <div class="form-group">
+            <label for="fontScale" class="form-label">字幕フォントサイズ</label>
+            <select id="fontScale" class="select-secondary">
+              <option value="0.8">小さめ (0.8x)</option>
+              <option value="1" selected>標準 (1.0x)</option>
+              <option value="1.2">大きめ (1.2x)</option>
+              <option value="1.4">特大 (1.4x)</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="screenUrl" class="form-label">投影画面URL（自動管理）</label>
+          <input id="screenUrl" type="url" readonly class="input-readonly">
+        </div>
+      </div>
+    </details>
+
+    <footer class="app-footer">
+      <p id="shortcutNote"></p>
+      <p>開始から120分で自動終了します。</p>
+    </footer>
+  </div>
+
+  <script src="audio-reference.js"></script>
   <script src="control.js"></script>
 </body>
 </html>

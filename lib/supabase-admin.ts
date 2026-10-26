@@ -22,10 +22,17 @@ export function getSupabaseAdmin(): SupabaseClient {
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
   if (!supabaseUrl || !supabaseServiceRoleKey) {
     throw new Error(
       'Server configuration error: SUPABASE_SERVICE_ROLE_KEY or NEXT_PUBLIC_SUPABASE_URL is missing.'
+    )
+  }
+
+  if (supabaseServiceRoleKey === anonKey) {
+    throw new Error(
+      'Server configuration error: SUPABASE_SERVICE_ROLE_KEY matches the anonymous key. Use the real Supabase service-role secret for this project.'
     )
   }
 

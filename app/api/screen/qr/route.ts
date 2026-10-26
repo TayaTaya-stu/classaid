@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { studentEntryUrl } from '@/lib/student-entry'
 import QRCode from 'qrcode'
 
 export async function GET(request: Request) {
@@ -14,18 +15,11 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'QRコードのURLが正しくありません。' }, { status: 400 })
   }
 
-  const forwardedHost = request.headers.get('x-forwarded-host')?.split(',')[0]?.trim()
-  const requestHost = forwardedHost || request.headers.get('host')
-  const forwardedProtocol = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim()
-  const requestProtocol = forwardedProtocol || new URL(request.url).protocol.replace(':', '')
-  if (
-    !requestHost ||
-    parsed.host !== requestHost ||
-    parsed.protocol !== `${requestProtocol}:` ||
-    !parsed.pathname.startsWith('/enter/')
-  ) {
-    return NextResponse.json({ error: '許可されていないURLです。' }, { status: 400 })
+  let allowed: string
+  try { allowed = studentEntryUrl(request) } catch {
+    return NextResponse.json({ error: '学生向けURLを設定してください。' }, { status: 503 })
   }
+  if (parsed.toString() !== allowed) return NextResponse.json({ error: '許可されていないURLです。' }, { status: 400 })
 
   const svg = await QRCode.toString(parsed.toString(), {
     type: 'svg', width: 320, margin: 1, errorCorrectionLevel: 'M',

@@ -52,73 +52,16 @@ export async function verifyRoomAccess(roomSlug: string): Promise<VerifiedRoomAc
       return null
     }
 
-    // 1. DB 上で session, room の実在と整合性を確認
-    const { data: room, error: roomError } = await supabaseAdmin
-      .from('rooms')
-      .select('id, session_id, room_slug, group_label')
-      .eq('id', payload.roomId)
-      .eq('room_slug', roomSlug.trim())
-      .maybeSingle()
-
-    if (roomError || !room || room.session_id !== payload.sessionId) {
-      return null
-    }
-
-    const { data: session, error: sessionError } = await supabaseAdmin
-      .from('sessions')
-      .select('id, session_number, status, is_locked')
-      .eq('id', payload.sessionId)
-      .maybeSingle()
-
-    if (sessionError || !session) {
-      return null
-    }
-
-    // 2. 出席情報 (session_attendances) の整合性を確認
-    const { data: attendance, error: attendanceError } = await supabaseAdmin
-      .from('session_attendances')
-      .select('id, display_name')
-      .eq('session_id', session.id)
-      .eq('room_id', room.id)
-      .eq('participant_id', payload.participantId)
-      .maybeSingle()
-
-    if (attendanceError || !attendance || attendance.display_name !== payload.displayName) {
-      return null
-    }
-
-    // 3. 認証リンク (participant_auth_links) の厳密な組み合わせ確認
-    // Cookie 内の authUserId と participantId が正確に結合されているか検証
-    const { data: authLink, error: authLinkError } = await supabaseAdmin
-      .from('participant_auth_links')
-      .select('auth_user_id')
-      .eq('participant_id', payload.participantId)
-      .eq('auth_user_id', payload.authUserId)
-      .maybeSingle()
-
-    if (authLinkError || !authLink) {
-      return null
-    }
-
+    const {data,error}=await supabaseAdmin.rpc('verify_reaction_room_access',{
+      p_session_id:payload.sessionId,p_room_id:payload.roomId,p_participant_id:payload.participantId,
+      p_auth_user_id:payload.authUserId,p_room_slug:roomSlug.trim(),
+    })
+    if(error||!data||data.length!==1)return null
+    const row=data[0]
     return {
-      session: {
-        id: session.id,
-        sessionNumber: session.session_number,
-        status: session.status,
-        isLocked: session.is_locked,
-      },
-      room: {
-        id: room.id,
-        roomSlug: room.room_slug,
-        groupLabel: room.group_label,
-      },
-      participant: {
-        id: payload.participantId,
-        displayName: attendance.display_name,
-      },
-      authUserId: payload.authUserId,
+      session:{id:row.session_id,sessionNumber:row.session_number,status:row.status,isLocked:row.is_locked},
+      room:{id:row.room_id,roomSlug:row.room_slug,groupLabel:row.group_label},
+      participant:{id:row.participant_id,displayName:row.display_name},authUserId:payload.authUserId,
     }
-  } catch {
-    return null
-  }
+  } catch {return null}
 }

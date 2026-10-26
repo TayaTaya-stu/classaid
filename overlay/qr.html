@@ -3,17 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>学生入室QRコード</title>
+  <title>SupporTalk 学生入室QRコード</title>
   <link rel="stylesheet" href="qr.css">
 </head>
 <body>
   <main>
     <header>
-      <div><strong>スマホから参加</strong><span>ドラッグして移動できます</span></div>
+      <div><strong>SupporTalk 参加QR</strong><span>ドラッグで移動</span></div>
       <button id="hide" type="button" aria-label="QRコードを隠す">－</button>
     </header>
+    <div id="entryUrl" aria-label="学生入室URL"></div>
     <img id="qr" alt="学生入室用QRコード">
-    <p>QRコードを読み取ってください</p>
+    <div id="cameraHint">スマートフォンのカメラで読み取ってください。次回も同じスマートフォンを使ってください。</div>
+    <div id="resizeHint" aria-hidden="true">右下をドラッグしてサイズ変更 ◢</div>
   </main>
   <script src="qr.js"></script>
 </body>

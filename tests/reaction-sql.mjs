@@ -9,11 +9,11 @@ const files=readdirSync(dir).sort((a,b)=>{
  const num=x=>x.startsWith('000')?0:Number(x.match(/(?:^|_)(\d{3})_/)[1]);return num(a)-num(b)
 })
 for(const file of files){try{await db.exec(readFileSync(new URL(file,dir),'utf8'))}catch(e){console.error('Migration failed:',file,e.message);throw e}}
-console.log('PASS: all 15 migrations execute in order on embedded PostgreSQL')
+console.log(`PASS: all ${files.length} migrations execute in order on embedded PostgreSQL`)
 const q=async(sql,args=[])=>(await db.query(sql,args)).rows
-const [{id:sid}]=await q(`SELECT public.create_shared_session(1,now(),true) AS id`)
-const [{id:rid}]=await q(`SELECT id FROM public.rooms WHERE session_id=$1`,[sid])
-await q(`UPDATE public.sessions SET reaction_pipeline_enabled=true,reaction_ai_mode='empathy',is_mock_ai=true WHERE id=$1`,[sid])
+let [{id:sid}]=await q(`SELECT public.create_shared_session(1,now(),true) AS id`)
+let [{id:rid}]=await q(`SELECT id FROM public.rooms WHERE session_id=$1`,[sid])
+await q(`UPDATE public.sessions SET status='in_progress',class_started_at=clock_timestamp(),reaction_pipeline_enabled=true,reaction_ai_mode='empathy',is_mock_ai=true WHERE id=$1`,[sid])
 async function post(){const [p]=await q(`INSERT INTO public.posts(session_id,room_id,author_type,author_display_name,name,message,is_ai,reply_target_type,audience_type,is_deleted) VALUES($1,$2,'human','test','test','hello',false,'none','room',false) RETURNING id`,[sid,rid]);return p.id}
 const pid=await post()
 assert.equal((await q(`SELECT * FROM public.ai_reply_jobs WHERE human_post_id=$1`,[pid])).length,1)
@@ -49,7 +49,7 @@ const [renewed]=await q(`SELECT * FROM public.claim_reaction_jobs(1,$1)`,[expire
 assert.notEqual(expired.lease_token,renewed.lease_token)
 await assert.rejects(finish(expired));await finish(renewed)
 console.log('PASS: expired worker fenced out after recovery')
-await q(`UPDATE public.sessions SET reaction_ai_mode='off' WHERE id=$1`,[sid]);const off=await post();[j]=await q(`SELECT * FROM public.claim_reaction_jobs(1,NULL)`);await finish(j)
+;[{id:sid}]=await q(`SELECT public.create_shared_session(2,now(),true) AS id`);[{id:rid}]=await q(`SELECT id FROM public.rooms WHERE session_id=$1`,[sid]);await q(`UPDATE public.sessions SET status='in_progress',class_started_at=clock_timestamp(),reaction_pipeline_enabled=true,reaction_ai_mode='off' WHERE id=$1`,[sid]);const off=await post();[j]=await q(`SELECT * FROM public.claim_reaction_jobs(1,NULL)`);await finish(j)
 assert.equal((await q(`SELECT event_type FROM public.projection_events WHERE human_post_id=$1`,[off]))[0].event_type,'human_only')
 assert.equal((await q(`SELECT status FROM public.ai_reply_jobs WHERE id=$1`,[j.id]))[0].status,'completed')
 console.log('PASS: off mode creates human-only event and completes job')

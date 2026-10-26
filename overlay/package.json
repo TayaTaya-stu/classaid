@@ -1,0 +1,25 @@
+{
+  "name": "supportalk-overlay",
+  "productName": "SupporTalk",
+  "version": "0.1.0",
+  "private": true,
+  "main": "main.cjs",
+  "devDependencies": {
+    "electron": "44.9.0"
+  },
+  "build": {
+    "appId": "jp.supportalk.classroom",
+    "productName": "SupporTalk",
+    "files": [
+      "*.cjs",
+      "*.js",
+      "*.html",
+      "*.css"
+    ],
+    "asar": true,
+    "win": {
+      "target": "portable",
+      "artifactName": "SupporTalk-${version}-portable.${ext}"
+    }
+  }
+}

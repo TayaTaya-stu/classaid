@@ -8,3 +8,12 @@ header span { display: block; margin-top: 2px; color: #687887; font-size: 10px; 
 button { width: 34px; height: 28px; border: 1px solid #9eacb7; border-radius: 8px; background: #f3f6f8; color: #263d50; font-size: 20px; line-height: 20px; cursor: pointer; -webkit-app-region: no-drag; }
 #qr { display: block; width: min(230px, calc(100% - 12px)); aspect-ratio: 1; margin: 10px auto 4px; object-fit: contain; }
 p { margin: 2px 0 0; text-align: center; color: #40576a; font-size: 13px; font-weight: 700; }
+
+#entryUrl { font-size: 12px; overflow-wrap: anywhere; user-select: text; padding: 8px 0 2px; color: #193a5a; -webkit-app-region: no-drag; }
+
+main{display:flex;flex-direction:column;gap:6px;padding:10px;border-radius:12px}
+header,#entryUrl,#cameraHint,#resizeHint{flex:none}
+#entryUrl{padding:2px 0;font-size:11px}
+#qr{flex:none;width:var(--qr-size,200px);height:var(--qr-size,200px);max-width:100%;margin:auto;aspect-ratio:1}
+#cameraHint{font-size:11px;line-height:1.45;color:#526273;background:#f2f6fa;padding:7px;border-radius:7px}
+#resizeHint{font-size:10px;text-align:right;color:#64748b;-webkit-app-region:no-drag}

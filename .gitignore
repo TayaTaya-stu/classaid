@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local generated review artifacts
+/review-current*/
+/*-review-extract/
+/scratch/
+/*.zip
+/*.patch
+/dist/

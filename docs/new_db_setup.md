@@ -134,3 +134,46 @@ server receipt. Never subtract clocks from different devices as an exact end-to-
 No human-only fallback exists for an AI-enabled session except explicit emergency stop.
 Unexpected DB errors leave a failed/recoverable job. No software can provide an AI response during
 an unavailable DB/network/projector; the objective is recovery without losing the original post.
+
+## 2026-10-25 名前ログイン確定仕様・授業文脈永続化（017 適用済み）
+
+新Supabaseプロジェクトにおいて、017の適用が完了しています。
+`PARTICIPANT_HMAC_SECRET` および `GEMINI_API_KEY` は `.env.local` に設定済みです。
+
+---
+
+## 2026-10-25 SupporTalk確定仕様・個別停止/120分自動終了/研究用ビュー（018 ★実DB未適用）
+
+### 概要
+- **対象**: 新規reactionプロジェクトのみ。既存マイグレーション（000〜017）は一切変更しない。
+- **ファイル**: `supabase/migrations/20261025_018_supportalk_controls_and_views.sql`
+- **内容**:
+  1. `public.sessions` へのカラム追加:
+     - `projection_status text DEFAULT 'active'`（投影状態: 'active', 'paused', 'stopped'）
+     - `demo_projected_at timestamptz DEFAULT NULL`（研究用デモ投稿の実投影時刻）
+     - `auto_expired_at timestamptz DEFAULT NULL`（120分経過による自動停止時刻）
+  2. `public.control_reaction_session`:
+     - アクション拡張: `start`, `stop`, `pause_ai`, `resume_ai`, `pause_projection`, `resume_projection`, `record_demo_projection`, `configure`。
+     - 二重開始防止（`already_started`）、授業中の条件変更ロック、120分期限超過後の操作ブロック（`session_expired`）。
+  3. `public.guard_reaction_condition`:
+     - 授業開始後の実験条件（`reaction_ai_mode`）およびモック設定の変更を厳格にロック（4条件を保護）。
+     - 個別の「AIのみ停止」「投影のみ停止」とその再開は許可。
+     - 120分経過後は再開不可（`session_expired`）。
+  4. `public.finish_reaction_job`:
+     - 120分期限チェックを追加。期限経過後はAI返信（`posts` へのaiレコード挿入）を行わず、`event_type = 'human_only'` として安全に確定（消失・重複・終了後の不正投影を完全防止）。
+  5. 研究用ビュー3種の新設:
+     - `v_research_session_overview`: 授業回・日時・条件・参加者数・投稿数・AI返信数・デモ投影時刻・自動終了時刻。
+     - `v_research_posts_and_replies`: 投稿とAI返信、時刻、生成元、モデル名、プロンプト版、参照根拠の対応一覧。
+     - `v_research_session_logs`: 授業開始・停止・再開・音声切断・復旧・自動終了・デモ投影等の時系列記録。
+     - `REVOKE ALL` により学生・匿名から非公開、`service_role` および管理画面からのみ参照可能。
+
+### 実DBへの適用手順（指示があるまで実行しないこと）
+1. Supabase DashboardのSQL Editorを開きます。
+2. `supabase/migrations/20261025_018_supportalk_controls_and_views.sql` の全内容を貼り付けて実行（Run）します。
+3. エラーなく成功することを確認します。
+
+
+
+## 2026-10-26 追加修正（実DB未適用）
+
+新規20261026_020_delivery_integrity.sqlが必要です。既存000〜019は変更しません。適用前の授業開始は拒否します。詳細・残る実機確認・保持方針はdocs/delivery-integrity-review-20261026.mdを参照してください。旧中止パッチの020とは異なります。

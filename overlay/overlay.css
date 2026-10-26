@@ -1,57 +1,12 @@
-:root { font-family: "Yu Gothic UI", "Meiryo", sans-serif; background: transparent; }
-html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent !important; }
-#lane { position: fixed; inset: 4vh 2vw 6vh; pointer-events: none; }
-
-.comment-item {
-  --font-scale: 1;
-  --comment-color: #ffffff;
-  position: absolute;
-  left: calc(100% - 8px);
-  max-width: min(92vw, 1800px);
-  padding: calc(6px * var(--font-scale)) calc(12px * var(--font-scale));
-  border: 0;
-  background: transparent;
-  color: var(--comment-color);
-  font-size: calc(38px * var(--font-scale));
-  font-weight: 800;
-  line-height: 1.3;
-  letter-spacing: .02em;
-  /* 白背景・暗背景の双方で視認性を保つ最小限のソフトシャドウ（過度な縁取りは回避） */
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.78), 0 0 2px rgba(0, 0, 0, 0.85);
-  white-space: nowrap;
-  animation: travel var(--travel-time, 12s) linear forwards;
-  display: inline-flex;
-  align-items: flex-start;
-  flex-direction: column;
-  gap: 0.05em;
-}
-
-.bubble {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.4em;
-}
-
-.bubble.ai {
-  font-size: .65em;
-  color: #72e7ff; /* AI返信であることが直感的に識別しやすい水色トーン */
-}
-
-.name {
-  font-size: 0.6em;
-  opacity: 0.88;
-  font-weight: 700;
-}
-
-.text {
-  font-size: 1em;
-}
-
-.connector {
-  font-size: 0.85em;
-  opacity: 0.85;
-  color: #ffde59;
-  font-weight: 900;
-}
-
-@keyframes travel { from { transform: translateX(0); } to { transform: translateX(var(--exit-distance, -195vw)); } }
+:root{font-family:"Yu Gothic UI","Meiryo",sans-serif;background:transparent}
+html,body{width:100%;height:100%;margin:0;overflow:hidden;background:transparent!important}
+#lane{position:fixed;inset:4vh 2vw 6vh;pointer-events:none}
+.comment-item{--font-scale:1;position:absolute;left:calc(100% - 8px);width:max-content;max-width:88vw;display:flex;flex-direction:column;align-items:flex-start;gap:calc(9px * var(--font-scale));font-size:calc(36px * var(--font-scale));font-weight:800;line-height:1.3;animation:travel var(--travel-time,12s) linear forwards;will-change:transform}
+.bubble{display:flex;align-items:baseline;gap:.45em;max-width:100%;box-sizing:border-box}
+.human{color:var(--human-color,#fff);text-shadow:0 1px 3px #000,1px 0 2px #000,-1px 0 2px #000}
+.name{font-size:.52em;white-space:nowrap;max-width:8em;overflow:hidden;text-overflow:ellipsis}
+.text{max-width:73vw;white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+.ai{position:relative;margin-left:calc(40px * var(--font-scale));padding:.16em .5em;border:2px solid var(--ai-color,#7636a1);border-radius:.45em;background:rgba(255,255,255,.95);color:var(--ai-color,#7636a1);font-size:.74em;box-shadow:0 1px 4px #0007}
+.ai::before{content:"";position:absolute;left:calc(-25px * var(--font-scale));top:calc(-20px * var(--font-scale));width:calc(22px * var(--font-scale));height:calc(36px * var(--font-scale));border-left:3px solid var(--human-color,#fff);border-bottom:3px solid var(--human-color,#fff);border-bottom-left-radius:8px;filter:drop-shadow(0 1px 1px #000)}
+.ai-label{font-size:.56em;font-weight:900;letter-spacing:.06em;white-space:nowrap}
+@keyframes travel{from{transform:translateX(0)}to{transform:translateX(var(--exit-distance,-195vw))}}
