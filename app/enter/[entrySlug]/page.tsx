@@ -139,6 +139,34 @@ export default function SessionEnterPage() {
     }
   }, [retryCount, coordinator])
 
+  const forgotSwitchInFlightRef = useRef(false)
+
+  async function registerWithForgottenName() {
+    if (forgotSwitchInFlightRef.current || loading || isAuthInitializing || !authToken) return
+    forgotSwitchInFlightRef.current = true
+    setLoading(true)
+    setErrorMessage(null)
+    // 明示的に新規登録を選んだ場合だけ認証を切り替える。通常入室の本人確認は維持する。
+    ++activeAttemptRef.current
+    try {
+      const token = await coordinator.switchNewParticipant(supabase)
+      setAuthToken(token)
+      setParticipantId('')
+      setForgotPreviousName(true)
+      setShowForgotName(false)
+      setDisplayName('')
+      setAuthInitFailed(false)
+      try { window.localStorage.removeItem(PARTICIPANT_PROFILE_KEY) } catch {}
+    } catch {
+      setAuthToken(null)
+      setAuthInitFailed(true)
+      setErrorMessage('新しい名前で参加する準備ができませんでした。再試行してください。')
+    } finally {
+      forgotSwitchInFlightRef.current = false
+      setLoading(false)
+    }
+  }
+
   async function submitEntry(claimExisting = false) {
     if (isAuthInitializing || !authToken) {
       setErrorMessage('入室準備中です。しばらくお待ちください。')
@@ -297,20 +325,15 @@ export default function SessionEnterPage() {
                 <li><strong>参加したことがある方は</strong>、前回と同じ名前を入力してください。</li>
                 <li>忘れないよう、<strong>メモやスクリーンショット</strong>で控えてください。</li>
               </ul>
-              {!participantId && !forgotPreviousName && (
+              {!forgotPreviousName && (
                 <button type="button" disabled={loading} onClick={() => setShowForgotName(true)} className="text-xs text-blue-700 underline underline-offset-2">
                   前に使った名前がわからない
                 </button>
               )}
               {showForgotName && !forgotPreviousName && (
                 <div className="border border-amber-200 bg-amber-50 rounded-lg p-3 space-y-2 text-xs text-amber-950" role="status">
-                  <p>前の参加記録を確認できないため、新しい名前での登録になります。以前の記録とは別の参加者として扱われます。</p>
-                  <button type="button" disabled={loading} onClick={() => {
-                    setForgotPreviousName(true)
-                    setShowForgotName(false)
-                    setDisplayName('')
-                    setErrorMessage(null)
-                  }} className="font-semibold underline underline-offset-2">新しい名前で参加する</button>
+                  <p>名前を忘れた場合は、新しい名前で参加できます。以前の参加記録とは別の参加者として登録されます。</p>
+                  <button type="button" disabled={loading || isAuthInitializing || !authToken} onClick={() => { void registerWithForgottenName() }} className="font-semibold underline underline-offset-2">新しい名前で参加する</button>
                   <button type="button" disabled={loading} onClick={() => setShowForgotName(false)} className="ml-3 underline underline-offset-2">戻る</button>
                 </div>
               )}
