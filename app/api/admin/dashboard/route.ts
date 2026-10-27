@@ -16,12 +16,14 @@ export async function GET(request: Request) {
     .order('scheduled_at', { ascending: false })
   if (sessionsError) return NextResponse.json({ error: '授業回の取得に失敗しました。' }, { status: 500 })
 
-  const history = new URL(request.url).searchParams.get('view') === 'history'
+  const view = new URL(request.url).searchParams.get('view') || 'current'
   const sessions = (rawSessions || []).filter(s => {
     if (s.admin_deleted_at) return false
-    const past = Boolean(s.is_archived) || ['completed','closed','locked'].includes(s.status)
-    return history ? past : (!past || Boolean(s.is_current_target))
-  }).map((s) => ({
+    if (view === 'hidden') return Boolean(s.is_archived)
+    if (s.is_archived) return false
+    const past = ['completed','closed','locked'].includes(s.status)
+    return view === 'history' ? past : (!past || Boolean(s.is_current_target))
+  }).sort((a,b) => (Date.parse(b.scheduled_at) || 0) - (Date.parse(a.scheduled_at) || 0) || b.id.localeCompare(a.id)).map((s) => ({
     ...s,
     is_current_target: Boolean((s as { is_current_target?: boolean }).is_current_target),
   }))

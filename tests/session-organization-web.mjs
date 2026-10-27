@@ -21,16 +21,30 @@ answer={data:null,error:{code:'missing_function'}};assert.equal((await request({
 // Actual dashboard route: default vs history, empty list, archived data remains inspectable.
 const rows=[{id,session_number:1,scheduled_at:'2026-10-27T01:00:00Z',status:'scheduled',is_current_target:true},
  {id:'22222222-2222-2222-2222-222222222222',status:'completed',is_archived:false},
- {id:'33333333-3333-3333-3333-333333333333',status:'scheduled',is_archived:true},
- {id:'44444444-4444-4444-4444-444444444444',status:'scheduled',admin_deleted_at:'2026-10-27'}]
+ {id:'33333333-3333-3333-3333-333333333333',status:'scheduled',is_archived:true,scheduled_at:'2026-10-26T01:00:00Z'},
+ {id:'44444444-4444-4444-4444-444444444444',status:'scheduled',admin_deleted_at:'2026-10-27'},
+ {id:'55555555-5555-5555-5555-555555555555',status:'completed',is_archived:true,scheduled_at:'2026-10-27T01:00:00Z'}]
 let dbRows=rows
 const fakeDb={from(table){let selected=table==='sessions'?dbRows.slice():[];const q={select(){return q},neq(k,v){selected=selected.filter(s=>s[k]!==v);return q},eq(k,v){selected=selected.filter(s=>s[k]===v);return q},order(){return Promise.resolve({data:selected,error:null})}};return q}}
 const dash=load('app/api/admin/dashboard/route.ts',{'next/server':require('next/server'),'@/lib/admin-auth':{isAdminAuthenticated:async()=>true},'@/lib/supabase-admin':{supabaseAdmin:fakeDb}})
 let json=await (await dash.GET(new Request('https://test/api/admin/dashboard'))).json()
 assert.deepEqual(json.sessions.map(s=>s.id),[id]);assert.equal(json.selectedSessionId,id)
 json=await (await dash.GET(new Request('https://test/api/admin/dashboard?view=history'))).json()
-assert.equal(json.sessions.length,2);assert.ok(json.sessions.some(s=>s.isArchived));assert.equal(json.sessions.some(s=>s.id===rows[3].id),false)
-json=await (await dash.GET(new Request('https://test/api/admin/dashboard?view=history&sessionId='+rows[2].id))).json();assert.equal(json.sessionControl.isArchived,true)
+assert.deepEqual(json.sessions.map(s=>s.id),[rows[1].id]);assert.equal(json.sessions.some(s=>s.isArchived),false);assert.equal(json.sessions.some(s=>s.id===rows[3].id),false)
+json=await(await dash.GET(new Request('https://test/api/admin/dashboard?view=hidden'))).json()
+assert.deepEqual(json.sessions.map(s=>s.id),[rows[4].id,rows[2].id], 'hidden sessions only, newest first')
+assert.ok(json.sessions.every(s=>s.isArchived))
+// Moving a class hides it from BOTH ordinary views, including when requested by its old ID.
+for(const view of ['current','history']) {
+ const hiddenResponse=await(await dash.GET(new Request('https://test/api/admin/dashboard?view='+view+'&sessionId='+rows[2].id))).json()
+ assert.equal(hiddenResponse.selectedSessionId,null)
+ assert.equal(hiddenResponse.sessions.some(s=>s.isArchived),false)
+}
+// Restore puts completed classes back into history without reopening them.
+rows[4].is_archived=false
+json=await(await dash.GET(new Request('https://test/api/admin/dashboard?view=history'))).json();assert.ok(json.sessions.some(s=>s.id===rows[4].id))
+rows[4].is_archived=true
+json=await (await dash.GET(new Request('https://test/api/admin/dashboard?view=hidden&sessionId='+rows[2].id))).json();assert.equal(json.sessionControl.isArchived,true)
 dbRows=[];json=await (await dash.GET(new Request('https://test/api/admin/dashboard'))).json();assert.equal(json.selectedSessionId,null);assert.equal(json.sessionControl,null)
 // Thirty archived histories must not hide an older explicitly designated class.
 const latestRows = [...Array.from({length:30},(_,i)=>({id:'archived-'+i,room_mode:'shared',is_archived:true,is_current_target:false})),
@@ -59,4 +73,6 @@ const page=fs.readFileSync('app/admin/page.tsx','utf8')
 assert.match(page,/sessionViewRef.current = view/)
 assert.match(page,/key=\{selectedSessionId\} sessionId=\{selectedSessionId\}/)
 assert.match(page,/ログ・分析/)
-console.log('PASS actual admin routes/UI: auth and delete confirmation required; DB conflicts shown; normal/history lists isolated; removed sessions hidden; archived logs selectable; cancel/protection/duplicate-click guard/exact target verified')
+assert.doesNotMatch(page,/履歴へ移動済み/)
+assert.match(page,/非表示の回/)
+console.log('PASS actual admin routes/UI: auth and delete confirmation required; DB conflicts shown; hidden sessions absent from both normal/history; newest-first hidden list and restoration verified; removed sessions hidden; hidden logs selectable; cancel/protection/duplicate-click guard/exact target verified')

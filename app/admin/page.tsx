@@ -53,8 +53,8 @@ export default function AdminPage() {
   const [isLoggingIn, setIsLoggingIn] = useState(false)
   const [dashboard, setDashboard] = useState<DashboardData | null>(null)
   const [selectedSessionId, setSelectedSessionId] = useState('')
-  const [sessionView, setSessionView] = useState<'current' | 'history'>('current')
-  const sessionViewRef = useRef<'current' | 'history'>('current')
+  const [sessionView, setSessionView] = useState<'current' | 'history' | 'hidden'>('current')
+  const sessionViewRef = useRef<'current' | 'history' | 'hidden'>('current')
   const [loadError, setLoadError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [showSessionCreator, setShowSessionCreator] = useState(false)
@@ -266,13 +266,13 @@ export default function AdminPage() {
       {dashboard?.sessionControl && <ClassStatus key={selectedSessionId} control={dashboard.sessionControl} />}
       <section style={{ padding: 18, borderRadius: 14, background: '#fff', border: '1px solid #c7d3df', marginBottom: 20 }}>
         <div style={{ display: 'flex', gap: 8, marginBottom: 14 }} aria-label="授業回一覧の切り替え">
-          {(['current','history'] as const).map(view => <button key={view} type="button" aria-pressed={sessionView === view} style={{ ...buttonStyle, background: sessionView === view ? '#17324d' : '#fff', color: sessionView === view ? '#fff' : '#17324d' }} onClick={() => { sessionViewRef.current = view; setSessionView(view); setSelectedSessionId(''); void loadDashboard() }}>{view === 'current' ? '準備中・授業中' : '履歴'}</button>)}
+          {(['current','history','hidden'] as const).map(view => <button key={view} type="button" aria-pressed={sessionView === view} style={{ ...buttonStyle, background: sessionView === view ? '#17324d' : '#fff', color: sessionView === view ? '#fff' : '#17324d' }} onClick={() => { sessionViewRef.current = view; setSessionView(view); setSelectedSessionId(''); void loadDashboard() }}>{view === 'current' ? '準備中・授業中' : view === 'history' ? '履歴' : '非表示の回'}</button>)}
         </div>
         <div style={{ display: 'flex', alignItems: 'end', gap: 12, flexWrap: 'wrap' }}>
-          <label style={{ display: 'grid', gap: 6, minWidth: 280, fontWeight: 700 }}>1. {sessionView === 'history' ? '履歴の授業回' : '準備する授業回'}
+          <label style={{ display: 'grid', gap: 6, minWidth: 280, fontWeight: 700 }}>1. {sessionView === 'hidden' ? '非表示にした授業回' : sessionView === 'history' ? '履歴の授業回' : '準備する授業回'}
             <select value={selectedSessionId} onChange={(event) => { setSelectedSessionId(event.target.value); void loadDashboard(event.target.value) }} style={{ padding: 10, border: '1px solid #9bacbd', borderRadius: 8, background: '#fff' }}>
               {!dashboard?.sessions.length && <option value="">この一覧に授業回はありません</option>}
-              {(dashboard?.sessions || []).map((session) => <option key={session.id} value={session.id}>{sessionLabel(session)}{session.isCurrentTarget ? ' ★今回指定' : ''}{session.isArchived ? '［履歴へ移動済み］' : ''}</option>)}
+              {(dashboard?.sessions || []).map((session) => <option key={session.id} value={session.id}>{sessionLabel(session)}{session.isCurrentTarget ? ' ★今回指定' : ''}</option>)}
             </select>
           </label>
           <button onClick={() => void loadDashboard(selectedSessionId)} disabled={isLoading} style={buttonStyle}>{isLoading ? '更新中…' : '今すぐ更新'}</button>
