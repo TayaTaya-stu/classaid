@@ -53,7 +53,6 @@ export default function SessionEnterPage() {
     const timer = window.setTimeout(() => {
       const saved = getStoredProfile()
       if (saved.displayName && saved.displayName.trim().length >= 2) {
-        setDisplayName(saved.displayName.trim())
         setParticipantId(saved.participantId)
       }
       setProfileReady(true)
@@ -103,7 +102,6 @@ export default function SessionEnterPage() {
         if (cancelled || activeAttemptRef.current !== attemptId) return
         if (token) {
           if (typeof profile.displayName === 'string' && profile.displayName) {
-            setDisplayName(profile.displayName)
             setParticipantId(profile.participantId)
             try { window.localStorage.setItem(PARTICIPANT_PROFILE_KEY, JSON.stringify(profile)) } catch {}
           }
@@ -294,11 +292,11 @@ export default function SessionEnterPage() {
                 placeholder="例：ぽむ、もふ、ぴよたろう"
                 className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all disabled:opacity-60"
               />
-              <div id="name-entry-help" className="space-y-1 text-xs text-slate-700 leading-relaxed">
-                <p>初めて参加する方は、新しく名前を決めてください。</p>
-                <p>参加したことがある方は、前回と同じ名前を入力してください。</p>
-                <p>忘れないよう、メモやスクリーンショットで控えてください。</p>
-              </div>
+              <ul id="name-entry-help" className="list-disc pl-5 space-y-2 text-xs text-slate-700 leading-relaxed">
+                <li><strong>初めて参加する方は</strong>、新しく名前を決めてください。</li>
+                <li><strong>参加したことがある方は</strong>、前回と同じ名前を入力してください。</li>
+                <li>忘れないよう、<strong>メモやスクリーンショット</strong>で控えてください。</li>
+              </ul>
               {!participantId && !forgotPreviousName && (
                 <button type="button" disabled={loading} onClick={() => setShowForgotName(true)} className="text-xs text-blue-700 underline underline-offset-2">
                   前に使った名前がわからない
