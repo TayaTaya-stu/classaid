@@ -280,22 +280,25 @@ export default function SessionEnterPage() {
               <label htmlFor="display-name-input" className="block text-xs font-bold text-slate-800">
                 チャットで使う名前
               </label>
+              <p id="remember-name-note" className="rounded-lg border-2 border-amber-400 bg-amber-50 px-3 py-2.5 text-sm font-bold leading-relaxed text-amber-950">
+                入力する名前を必ず覚えておいてください。
+              </p>
               <input
                 id="display-name-input"
+                aria-describedby="remember-name-note name-entry-help"
                 type="text"
                 autoComplete="off"
                 disabled={loading || (authInitFailed && !authToken)}
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="あおぞら、たろう、さくら"
+                placeholder="例：ぽむ、もふ、ぴよたろう"
                 className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all disabled:opacity-60"
               />
-              <p className="text-xs font-medium text-slate-700 leading-relaxed">
-                以前参加した方は、必ず前回と同じ名前で入室してください。初めて参加する方は、新しい名前を入力してください。
-              </p>
-              <p className="text-[11px] text-slate-500">
-                本名でなくてかまいません。
-              </p>
+              <div id="name-entry-help" className="space-y-1 text-xs text-slate-700 leading-relaxed">
+                <p>初めて参加する方は、新しく名前を決めてください。</p>
+                <p>参加したことがある方は、前回と同じ名前を入力してください。</p>
+                <p>忘れないよう、メモやスクリーンショットで控えてください。</p>
+              </div>
               {!participantId && !forgotPreviousName && (
                 <button type="button" disabled={loading} onClick={() => setShowForgotName(true)} className="text-xs text-blue-700 underline underline-offset-2">
                   前に使った名前がわからない

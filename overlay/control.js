@@ -247,7 +247,7 @@ const audioCheck = new window.SupporTalkAudioCheck({
     if (message) $('audioCheckStatus').textContent = message
     const busy = !['idle', 'done', 'error', 'stopped'].includes(state)
     $('btnAudioCheck').disabled = busy || actionBusy || isClassRunning || isAudioActive || audioStarting
-    $('btnCancelAudioCheck').hidden = !busy
+    $('btnCancelAudioCheck').disabled = !busy
   },
   onResult: result => {
     $('audioCheckTranscript').textContent = result.transcript || '（認識された発話はありません）'
@@ -592,6 +592,13 @@ $('sessionSelect').addEventListener('change', async (e) => {
 })
 
 // イベントリスナーの登録
+$('btnQuitApp').addEventListener('click', async () => {
+  $('btnQuitApp').disabled = true
+  $('quitAppMessage').textContent = ''
+  try { await api.quitApp() }
+  catch { $('quitAppMessage').textContent = 'アプリを終了できませんでした。もう一度押してください。' }
+  finally { $('btnQuitApp').disabled = false }
+})
 $('btnOpenAdmin').addEventListener('click', () => api.openAdmin())
 $('btnToggleQr').addEventListener('click', toggleQr)
 $('btnStartClass').addEventListener('click', () => runAction(startClass))

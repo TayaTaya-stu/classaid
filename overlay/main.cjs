@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, shell, Tray, Menu, nativeImage, globalShortcut, safeStorage, session, powerMonitor } = require('electron')
+const { app, BrowserWindow, ipcMain, screen, shell, Tray, Menu, nativeImage, globalShortcut, safeStorage, session, powerMonitor, dialog } = require('electron')
 const path = require('node:path')
 const fs = require('node:fs')
 const crypto = require('node:crypto')
@@ -638,7 +638,10 @@ ipcMain.handle('overlay:detect-latest', async (_event, requestedSessionId) => {
           const slug=parseScreenUrl(json.screenUrl).screenSlug
           const screenUrl=`${baseUrl}/screen/${slug}`
           saveConfig({ ...readConfig(), serverOrigin: baseUrl, screenUrl, activeSessionId: json.sessionId })
-          if (json.classStartedAt) keepDeadline(Date.parse(json.classStartedAt) + 120 * 60 * 1000)
+          const deadline = json.classStartedAt ? Date.parse(json.classStartedAt) + 120 * 60 * 1000 : NaN
+          const runningClass = json.status === 'in_progress' && json.isCurrentTarget !== false && !json.autoExpiredAt && Number.isFinite(deadline) && Date.now() < deadline
+          if (runningClass) keepDeadline(deadline)
+          else clearClassTimers()
           return {
             ok: true,
             baseUrl,
@@ -662,6 +665,27 @@ ipcMain.handle('overlay:detect-latest', async (_event, requestedSessionId) => {
     } catch {}
   }
   throw new Error('利用可能な授業回を自動検出できませんでした。')
+})
+
+// Exit only this PC's app. Ending a classroom remains an explicit separate operation.
+let quitDialogOpen = false
+ipcMain.handle('overlay:quit-app', async (event) => {
+  if (!controlWindow || event.sender !== controlWindow.webContents) throw new Error('Invalid control sender')
+  if (quitDialogOpen) return { ok: false, cancelled: true }
+  quitDialogOpen = true
+  try {
+    const result = await dialog.showMessageBox(controlWindow, {
+      type: 'question', title: 'SupporTalkを完全終了',
+      message: 'このPCのSupporTalkアプリを終了しますか？',
+      detail: 'このPCの音声取得・コメント投影・QR表示を停止します。サーバーの授業は終了しません。授業も終える場合は「戻る」を選び、先に「授業を完全終了」を押してください。',
+      buttons: ['戻る', 'アプリを終了'], defaultId: 0, cancelId: 0, noLink: true,
+    })
+    if (result.response !== 1) return { ok: false, cancelled: true }
+    isQuitting = true
+    stopAudioCapture(); stopOverlay(); hideQrWindow(); clearClassTimers()
+    app.quit()
+    return { ok: true }
+  } finally { quitDialogOpen = false }
 })
 
 ipcMain.handle('overlay:open-admin', async () => {

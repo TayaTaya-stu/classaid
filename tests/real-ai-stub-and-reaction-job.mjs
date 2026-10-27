@@ -21,7 +21,7 @@ assert.equal(successResult.source, 'generated')
 assert.equal(successResult.modelName, 'gemini-3.8-flash')
 assert.equal(successResult.fallbackId, null)
 assert.equal(successResult.text, 'その疑問、計算量と深く関わっていて面白い視点ですね！')
-assert.equal(successResult.contextMetadata.promptVersion, 'reaction-v15-qualified-lecture-keywords')
+assert.equal(successResult.contextMetadata.promptVersion, 'reaction-v16-it-classroom-tone')
 console.log('PASS Real AI success response generated with correct model and prompt metadata')
 
 console.log('\n=== Test 2: Real AI Generator - API Error Stub & Fallback ===')

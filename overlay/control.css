@@ -514,3 +514,7 @@ body {
 #audioCheckStatus{font-size:13px;line-height:1.6;margin:6px 0}
 .audio-check-transcript{padding:12px;background:white;border:1px solid #cbd5e1;border-radius:8px;white-space:pre-wrap;overflow-wrap:anywhere;max-height:160px;overflow:auto;font-size:14px;line-height:1.7}
 .audio-check-panel [hidden]{display:none!important}
+
+.audio-check-stop{border-color:#dc2626;color:#991b1b;background:#fff}
+.audio-check-stop:disabled{opacity:.45;cursor:not-allowed}
+.app-quit-button{display:block;margin:16px auto 8px;border:1px solid #cbd5e1;color:#334155;background:#fff;padding:10px 16px;font-size:13px}

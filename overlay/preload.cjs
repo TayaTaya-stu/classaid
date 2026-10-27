@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('classroomOverlay', {
+  quitApp: () => ipcRenderer.invoke('overlay:quit-app'),
   getInitialState: () => ipcRenderer.invoke('overlay:get-initial-state'),
   detectLatest: (sessionId) => ipcRenderer.invoke('overlay:detect-latest', sessionId),
   start: (config) => ipcRenderer.invoke('overlay:start', config),

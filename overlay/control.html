@@ -79,8 +79,8 @@
       <h2 id="audioCheckHeading">音声チェック</h2>
       <p class="audio-check-note">5秒話して、文字起こしを確認できます。音声はGoogleへ送信して認識します（API利用あり）。チェック内容は授業・研究ログに保存しません。授業中は通常の文字起こし結果を表示します。</p>
       <div class="audio-check-actions">
-        <button id="btnAudioCheck" class="btn-retry" type="button">5秒録音して確認</button>
-        <button id="btnCancelAudioCheck" class="btn-retry" type="button" hidden>停止</button>
+        <button id="btnAudioCheck" class="btn-retry" type="button">音声チェック開始（5秒）</button>
+        <button id="btnCancelAudioCheck" class="btn-retry audio-check-stop" type="button" disabled>音声チェック停止</button>
         <meter id="audioCheckLevel" min="0" max="100" value="0" aria-label="マイクの入力音量"></meter>
       </div>
       <p id="audioCheckStatus" role="status" aria-live="polite">授業開始前にマイクを確認できます。</p>
@@ -189,6 +189,9 @@
     </details>
 
     <footer class="app-footer">
+      <button id="btnQuitApp" class="btn-retry app-quit-button" type="button">アプリを完全終了</button>
+      <p>×は画面を隠します。終了するときは上のボタンを押してください。</p>
+      <p id="quitAppMessage" role="status" aria-live="polite"></p>
       <p id="shortcutNote"></p>
       <p>開始から120分で自動終了します。</p>
     </footer>
