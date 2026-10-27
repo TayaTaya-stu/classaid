@@ -54,7 +54,8 @@ const context=load('lib/reaction-ai/context.ts',{'server-only':{},'@/lib/supabas
 let transcriptions=0
 const route=load('app/api/teacher/lecture-context/route.ts',{'next/server':{NextResponse:Response},'@/lib/teacher-auth':{isTeacherAuthenticated:async()=>true},'@/lib/reaction-ai/context':context,'@/lib/reaction-ai/audio-transcription':{transcribeLectureAudio:async(_files,_signal,reserve)=>{assert.equal(await reserve(),true);transcriptions++;return {transcript:'カメラを使った参加の工夫を説明します。',modelUsed:'test-model'}}},'@/lib/supabase-admin':{supabaseAdmin:admin}})
 const request=(content='audio-a')=>{const form=new FormData();form.set('sessionId',sid);form.append('audio',new File([content],'record.webm',{type:'audio/webm'}));return new Request('http://test/api/teacher/lecture-context',{method:'POST',body:form})}
-assert.equal((await route.POST(request())).status,200)
+const savedResponse=await route.POST(request());assert.equal(savedResponse.status,200)
+const savedBody=await savedResponse.json();assert.equal(savedBody.transcript,'カメラを使った参加の工夫を説明します。');assert.ok(savedBody.checkedAt)
 let rows=(await db.query('SELECT * FROM lecture_transcript_segments WHERE session_id=$1',[sid])).rows
 assert.equal(rows.length,1);assert.equal(rows[0].transcript_original,'カメラを使った参加の工夫を説明します。');assert.equal(rows[0].model_name,'test-model')
 assert.equal((await route.POST(request())).status,200);assert.equal(transcriptions,1)

@@ -61,6 +61,7 @@ function formConfig() {
 
 // ステータス表示の更新
 function updateStatusUI() {
+  if ($('btnAudioCheck')) $('btnAudioCheck').disabled = actionBusy || isClassRunning || audioStarting || isAudioActive || Boolean(audioCheck?.active)
   const dot = $('dotOverall')
   const statusText = $('statusText')
   const pillAi = $('pillAi')
@@ -238,6 +239,31 @@ function startCountdownTimer(startedAtIso) {
   countdownInterval = setInterval(updateCountdown, 1000)
 }
 
+const audioCheck = new window.SupporTalkAudioCheck({
+  send: segment => api.checkAudio(segment),
+  cancelSend: () => api.cancelAudioCheck(),
+  onLevel: level => { $('audioCheckLevel').value = level },
+  onState: (state, message) => {
+    if (message) $('audioCheckStatus').textContent = message
+    const busy = !['idle', 'done', 'error', 'stopped'].includes(state)
+    $('btnAudioCheck').disabled = busy || actionBusy || isClassRunning || isAudioActive || audioStarting
+    $('btnCancelAudioCheck').hidden = !busy
+  },
+  onResult: result => {
+    $('audioCheckTranscript').textContent = result.transcript || '（認識された発話はありません）'
+    $('audioCheckTranscript').hidden = false
+    $('audioCheckTime').textContent = `確認時刻: ${new Date(result.checkedAt).toLocaleTimeString('ja-JP')} / ${result.modelUsed || ''}`
+  },
+})
+$('btnAudioCheck').addEventListener('click', () => {
+  if (actionBusy || isClassRunning || isAudioActive || audioStarting || audioCheck.active) return
+  $('audioCheckTranscript').textContent = ''; $('audioCheckTranscript').hidden = true; $('audioCheckTime').textContent = ''
+  void audioCheck.start()
+})
+$('btnCancelAudioCheck').addEventListener('click', () => audioCheck.stop())
+api.onStopAudioCheck(() => audioCheck.stop())
+window.addEventListener('beforeunload', () => audioCheck.stop())
+
 // Reuse Shared Wall's getUserMedia + independent 15-second MediaRecorder segments.
 const audioReference = new window.SupporTalkAudioReference({
   send: (sessionId, segments) => api.sendAudioSegments(sessionId, segments),
@@ -252,12 +278,19 @@ const audioReference = new window.SupporTalkAudioReference({
     updateStatusUI()
   },
   onSaved: (result) => {
+    if (typeof result.transcript === 'string') {
+      $('audioCheckTranscript').textContent = result.transcript || '（認識された発話はありません）'
+      $('audioCheckTranscript').hidden = false
+      $('audioCheckTime').textContent = `授業音声の更新: ${new Date(result.checkedAt).toLocaleTimeString('ja-JP')} / ${result.modelUsed || ''}`
+      $('audioCheckStatus').textContent = '授業音声の文字起こしを更新しました。'
+    }
     $('pillAudio').title = `文脈更新: ${new Date().toLocaleTimeString('ja-JP')} / ${result.modelUsed || ''}`
   },
 })
-api.onStopAudio(() => audioReference.stop())
+api.onStopAudio(() => { audioReference.stop(); audioCheck.stop() })
 window.addEventListener('beforeunload', () => audioReference.stop())
 async function startAudioReference() {
+  audioCheck.stop()
   if (!currentSession) return false
   try {
     await api.stopAudioCapture()
@@ -275,6 +308,9 @@ async function stopAudioReference() { audioReference.stop(); await api.stopAudio
 
 // 授業開始処理
 async function startClass() {
+  audioCheck.stop()
+  $('audioCheckTranscript').textContent = ''; $('audioCheckTranscript').hidden = true; $('audioCheckTime').textContent = ''
+  $('audioCheckStatus').textContent = '授業開始後、最初の文字起こしを受信するとここに表示します。'
   if (!currentSession) return
   if (currentSession.autoExpiredAt || ['completed','closed','locked'].includes(currentSession.status) || (currentSession.classStartedAt && Date.now() >= Date.parse(currentSession.classStartedAt) + 120 * 60000)) { updateStatusUI(); return }
   $('btnStartClass').disabled = true

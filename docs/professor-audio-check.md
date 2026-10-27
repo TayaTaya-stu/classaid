@@ -1,0 +1,16 @@
+# Professor microphone check
+
+- Before class, click “5秒録音して確認”. The audio meter shows microphone input during five seconds of recording. The complete recording is sent through the Electron main process, using teacher header authentication and the configured origin, to `/api/teacher/audio-check`.
+- The same `transcribeLectureAudio` helper and model order as lecture capture are used. No new service or transcription wording. This invokes the Google API (up to three model attempts per check), outside a lecture-session generation budget; the professor explicitly initiates each check. There is one in-flight check per app instance.
+- The diagnostic endpoint does not import the database/context layer and writes no session, transcript archive, or research event. Test audio is not saved to disk. The latest test transcript is displayed in the control window only; it is cleared on a new check, class start or window reload. No transcript is sent to console logs.
+- Upload bounded to 1 MiB total, with a single supported audio file; renderer/main cap audio at 900 KiB. Responses have no-store. Empty/very quiet recordings do not invoke recognition; this is an input-level heuristic, not speech detection or a guarantee of accurate ASR.
+- Stop releases the microphone and cancels pending transport. Late permission and transcription results are ignored. Main transport has a 35-second limit; existing ASR helper has a 25-second aggregate deadline. Mic permission wait is capped at 30 seconds.
+- During class the test button is disabled. Normal lecture capture continues unchanged at 15-second segments; the existing lecture-context response additionally returns its already-saved transcript and receive time for display. No extra recognition requests or polling for this display. Archived class audio remains governed by the existing protocol and budget.
+- No SQL or environment-variable changes. Update the web server via the current Git/Vercel workflow and completely restart the professor app. New desktop code with an old server will report a check failure until redeployed.
+
+## Verification
+
+Local VM hardware/transport stubs execute actual recorder and API modules in `tests/audio-check.mjs`: one-flight, five-second capture, meter, quiet-input gate, stop during capture, late permission, permission timeout, cancellation/stale response, authenticated route, payload/MIME/file count limits, no-store and zero database dependencies.
+Actual Electron handler boundary assertions in `tests/supportalk-reused-audio.mjs`: check goes to configured server with teacher header and no session ID, invalid sender rejected, class start blocks diagnostic and cancels it. Existing capture still works.
+Actual PGlite lecture archive route test confirms persisted text equals displayed response; duplicate and failed archive paths retain their previous behavior. Start/refresh, QR, keyword-quality and countdown/pair regressions pass. TypeScript, ESLint and production build pass.
+No physical microphone, paid Google call, Vercel redeployment, Zoom concurrent microphone, or Windows visual check was performed here. After deployment verify five-second check, then normal lecture text display, stop and retry, including a normal Zoom microphone session if required.

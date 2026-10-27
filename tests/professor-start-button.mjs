@@ -5,6 +5,8 @@ let pending=true,detect=0,hidden=0;
 const next={sessionId:'new',sessionNumber:2,status:'scheduled',reactionAiMode:'off',isCurrentTarget:true};next.sessions=[next];
 const api=new Proxy({getInitialState:async()=>({config:{pendingStop:pending},displays:[]}),detectLatest:async()=>{detect++;return next},hideQr:async()=>{hidden++}}, {get:(t,k)=>t[k]||(()=>{})});
 const c=vm.createContext({console,document:{getElementById:node,createElement:()=>node(Math.random())},window:{classroomOverlay:api,SupporTalkAudioReference:class{stop(){}},addEventListener:(n,f)=>events[n]=f},setInterval:(f)=>{intervals.push(f);return 1},clearInterval(){},Date,alert:()=>{}});
+vm.runInContext(fs.readFileSync(new URL('../overlay/audio-check.js',import.meta.url),'utf8'),c);
+c.window.SupporTalkAudioCheck = c.SupporTalkAudioCheck;
 vm.runInContext(fs.readFileSync(new URL('../overlay/control.js',import.meta.url),'utf8'),c);
 const tick=()=>new Promise(r=>setImmediate(r));
 (async()=>{await tick();assert.equal(detect,0);assert.equal(node('btnStartClass').disabled,true);pending=false;await intervals[0]();await tick();assert.equal(detect,1);assert.equal(node('btnStartClass').disabled,false);assert.equal(node('sessionSelect').disabled,false);assert.equal(vm.runInContext('currentSession.sessionId',c),'new');

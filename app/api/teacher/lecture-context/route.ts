@@ -72,7 +72,7 @@ export async function POST(request: Request) {
       // A logging failure must not cause an already-saved transcript to be replayed.
       if (error) console.error('Audio metadata log failed:', error.code)
     }
-    return NextResponse.json({ success: true, updated: true, modelUsed, recentTopics: context.recentAcademicTopics })
+    return NextResponse.json({ success: true, updated: true, modelUsed, transcript: text, checkedAt: new Date().toISOString(), recentTopics: context.recentAcademicTopics })
   } catch {
     console.warn('[SupporTalk] Audio context failed:', stage)
     if (targetSessionId) {

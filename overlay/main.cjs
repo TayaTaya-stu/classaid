@@ -37,6 +37,7 @@ let sessionExpiresAt = null
 let sessionControlDeadline = null
 let sessionControlTimer = null
 let runtimePassword = ''
+let audioCheckController = null
 let audioRequestController = null
 let stateSyncTimer = null
 let stateSyncBusy = false
@@ -133,6 +134,7 @@ async function syncClassState() {
 
 
 function stopAudioCapture() {
+  audioCheckController?.abort(); audioCheckController = null
   audioRequestController?.abort(); audioRequestController = null
   sendControl('overlay:stop-audio')
 }
@@ -669,6 +671,7 @@ ipcMain.handle('overlay:open-admin', async () => {
 })
 
 ipcMain.handle('overlay:control-session', async (_event, action, sessionId) => {
+  if(action==='start'){audioCheckController?.abort();sendControl('overlay:stop-audio-check')}
   if(action==='stop'){saveConfig({...readConfig(),pendingStop:{sessionId,origin:appOrigin()}});stopAudioCapture();stopOverlay();hideQrWindow()}
   const origin = appOrigin()
   const teacherPwd = getTeacherPassword()
@@ -696,6 +699,33 @@ ipcMain.handle('overlay:control-session', async (_event, action, sessionId) => {
 })
 
 ipcMain.handle('overlay:stop-audio', () => { stopAudioCapture(); return { ok: true } })
+
+ipcMain.handle('overlay:cancel-audio-check', (event) => {
+  if (!controlWindow || event.sender !== controlWindow.webContents) throw new Error('Invalid audio sender')
+  audioCheckController?.abort()
+  return { ok: true }
+})
+ipcMain.handle('overlay:check-audio', async (event, segment) => {
+  if (!controlWindow || event.sender !== controlWindow.webContents) throw new Error('Invalid audio sender')
+  if (sessionControlDeadline && Date.now() < sessionControlDeadline) return { ok: false, error: '授業中は本番の音声取得を使用します。' }
+  if (audioCheckController) return { ok: false, error: '音声チェックの終了を待ってください。' }
+  if (!segment || typeof segment.base64 !== 'string' || segment.base64.length > 1250000 || !/^[A-Za-z0-9+/]*={0,2}$/.test(segment.base64) || !['audio/webm','audio/ogg','audio/mp4'].includes(segment.mimeType?.split(';')[0])) throw new Error('Invalid check audio')
+  const bytes = Buffer.from(segment.base64, 'base64')
+  if (!bytes.length || bytes.length > 900 * 1024) throw new Error('Invalid check audio size')
+  const controller = new AbortController()
+  audioCheckController = controller
+  try {
+    const form = new FormData()
+    form.append('audio', new Blob([bytes], { type: segment.mimeType }), 'microphone-check.webm')
+    const response = await fetch(`${appOrigin()}/api/teacher/audio-check`, {
+      method: 'POST', headers: { 'x-teacher-password': getTeacherPassword() }, body: form,
+      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(35000)]),
+    })
+    const data = await response.json().catch(() => ({}))
+    return { ...data, ok: response.ok, status: response.status }
+  } catch { return { ok: false, error: '音声チェックを完了できませんでした。接続を確認して再試行してください。' } }
+  finally { if (audioCheckController === controller) audioCheckController = null }
+})
 
 ipcMain.handle('overlay:send-audio-segments', async (event, sessionId, segments) => {
   if (!controlWindow || event.sender !== controlWindow.webContents) throw new Error('Invalid audio sender')
