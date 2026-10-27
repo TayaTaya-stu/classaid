@@ -30,20 +30,20 @@ export async function GET(request: Request) {
     // 2. セッション一覧を取得
     const { data: rawSessions, error } = await supabaseAdmin
       .from('sessions')
-      .select('id, session_number, scheduled_at, screen_slug, entry_slug, status, is_locked, class_started_at, reaction_ai_mode, reaction_ai_status, projection_status, auto_expired_at, pdf_file_url, is_current_target')
+      .select('id, session_number, scheduled_at, screen_slug, entry_slug, status, is_locked, class_started_at, reaction_ai_mode, reaction_ai_status, projection_status, auto_expired_at, pdf_file_url, is_current_target, is_archived, admin_deleted_at')
       .eq('room_mode', 'shared')
       .neq('id', '00000000-0000-0000-0000-000000000001')
       .order('session_number', { ascending: false })
       .limit(30)
 
     // SQL 019の指定フラグを利用する。DB失敗時に日時選択へ切り替えない。
-    const sessions = (rawSessions || []).map((s) => ({
+    const sessions = (rawSessions || []).filter(s => !s.is_archived && !s.admin_deleted_at).map((s) => ({
       ...s,
       is_current_target: Boolean((s as { is_current_target?: boolean }).is_current_target),
     }))
 
     if (error) return NextResponse.json({ error: '授業回の取得に失敗しました。再試行してください。' }, { status: 503 })
-    if (sessions.length === 0) {
+    if ((rawSessions || []).length === 0) {
       return NextResponse.json({ error: '利用可能な授業回がありません。' }, { status: 404 })
     }
 
@@ -51,14 +51,14 @@ export async function GET(request: Request) {
     // Resolve the target independently of the bounded history list. A designated
     // or explicitly requested class must not disappear after 30 other histories.
     let targetQuery = supabaseAdmin.from('sessions')
-      .select('id, session_number, scheduled_at, screen_slug, entry_slug, status, is_locked, class_started_at, reaction_ai_mode, reaction_ai_status, projection_status, auto_expired_at, pdf_file_url, is_current_target')
+      .select('id, session_number, scheduled_at, screen_slug, entry_slug, status, is_locked, class_started_at, reaction_ai_mode, reaction_ai_status, projection_status, auto_expired_at, pdf_file_url, is_current_target, is_archived, admin_deleted_at')
       .eq('room_mode', 'shared')
       .neq('id', '00000000-0000-0000-0000-000000000001')
     targetQuery = requestedSessionId ? targetQuery.eq('id', requestedSessionId) : targetQuery.eq('is_current_target', true)
     const {data: targets, error: targetError} = await targetQuery.limit(2)
     if (targetError) return NextResponse.json({error:'指定授業回の取得に失敗しました。再試行してください。'},{status:503})
     // Use the same explicit designation as /join. Never guess by date or an old running class.
-    const targetSession = targets?.length === 1 ? targets[0] : null
+    const targetSession = targets?.length === 1 && !targets[0].is_archived && !targets[0].admin_deleted_at ? targets[0] : null
     if (!targetSession) return NextResponse.json({
       error: requestedSessionId ? '指定された授業回が見つかりません。' : '管理者画面で今回使用する授業回を1つ指定してください。',
     }, { status: requestedSessionId ? 404 : 409 })

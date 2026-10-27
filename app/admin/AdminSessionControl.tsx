@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 export type SessionControlData = {
   status: string
   isLocked: boolean
+  isArchived?: boolean
   isCurrentTarget?: boolean
   pdfFilePath: string | null
   classStartedAt: string | null

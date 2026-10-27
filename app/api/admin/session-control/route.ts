@@ -11,8 +11,8 @@ const MAX_PDF_BYTES = 25 * 1024 * 1024
 async function canControlSession(sessionId: string) {
   if (!UUID_REGEX.test(sessionId)) return false
   const { data, error } = await supabaseAdmin
-    .from('sessions').select('id, status, is_locked').eq('id', sessionId).maybeSingle()
-  return !error && data && !data.is_locked && !['completed', 'locked'].includes(data.status)
+    .from('sessions').select('id, status, is_locked, is_archived, admin_deleted_at').eq('id', sessionId).maybeSingle()
+  return !error && data && !data.is_locked && !data.is_archived && !data.admin_deleted_at && !['completed', 'locked'].includes(data.status)
 }
 
 export async function POST(request: Request) {

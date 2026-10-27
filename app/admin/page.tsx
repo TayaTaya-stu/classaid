@@ -2,9 +2,10 @@
 
 import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import ClassStatus from './ClassStatus'
+import AdminSessionOrganizer from './AdminSessionOrganizer'
 import AdminSessionControl, { type SessionControlData } from './AdminSessionControl'
 
-type SessionSummary = { id: string; sessionNumber: number; scheduledAt: string; isDevelopment: boolean }
+type SessionSummary = { id: string; sessionNumber: number; scheduledAt: string; isDevelopment: boolean; status: string; isArchived: boolean; isCurrentTarget: boolean }
 type RoomSummary = { id: string; groupLabel: string; aiCondition: 'none' | 'standard' | 'damekko' }
 type DashboardData = {
   sessions: SessionSummary[]
@@ -52,6 +53,8 @@ export default function AdminPage() {
   const [isLoggingIn, setIsLoggingIn] = useState(false)
   const [dashboard, setDashboard] = useState<DashboardData | null>(null)
   const [selectedSessionId, setSelectedSessionId] = useState('')
+  const [sessionView, setSessionView] = useState<'current' | 'history'>('current')
+  const sessionViewRef = useRef<'current' | 'history'>('current')
   const [loadError, setLoadError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [showSessionCreator, setShowSessionCreator] = useState(false)
@@ -75,7 +78,9 @@ export default function AdminPage() {
     const request=++dashboardRequest.current
     if (!quiet) setIsLoading(true)
     try {
-      const query = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : ''
+      const queryParams = new URLSearchParams({ view: sessionViewRef.current })
+      if (sessionId) queryParams.set('sessionId', sessionId)
+      const query = `?${queryParams}`
       const response = await fetch(`/api/admin/dashboard${query}`, { cache: 'no-store', signal:AbortSignal.timeout(10000) })
       if(request!==dashboardRequest.current)return
       if (response.status === 401) { setAuthenticated(false); setDashboard(null); return }
@@ -193,6 +198,7 @@ export default function AdminPage() {
       if (!response.ok || !data.sessionId) throw new Error(data.error || '授業回の作成に失敗しました。')
       setShowSessionCreator(false)
       setCreateSessionMessage('新しい授業回を作成しました。今回使用する回に指定してください。')
+      sessionViewRef.current = 'current'; setSessionView('current')
       await loadDashboard(data.sessionId)
     } catch (error) {
       setCreateSessionMessage(error instanceof Error ? error.message : '授業回の作成に失敗しました。')
@@ -259,10 +265,14 @@ export default function AdminPage() {
       </header>
       {dashboard?.sessionControl && <ClassStatus key={selectedSessionId} control={dashboard.sessionControl} />}
       <section style={{ padding: 18, borderRadius: 14, background: '#fff', border: '1px solid #c7d3df', marginBottom: 20 }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }} aria-label="授業回一覧の切り替え">
+          {(['current','history'] as const).map(view => <button key={view} type="button" aria-pressed={sessionView === view} style={{ ...buttonStyle, background: sessionView === view ? '#17324d' : '#fff', color: sessionView === view ? '#fff' : '#17324d' }} onClick={() => { sessionViewRef.current = view; setSessionView(view); setSelectedSessionId(''); void loadDashboard() }}>{view === 'current' ? '準備中・授業中' : '履歴'}</button>)}
+        </div>
         <div style={{ display: 'flex', alignItems: 'end', gap: 12, flexWrap: 'wrap' }}>
-          <label style={{ display: 'grid', gap: 6, minWidth: 280, fontWeight: 700 }}>1. 準備する授業回
+          <label style={{ display: 'grid', gap: 6, minWidth: 280, fontWeight: 700 }}>1. {sessionView === 'history' ? '履歴の授業回' : '準備する授業回'}
             <select value={selectedSessionId} onChange={(event) => { setSelectedSessionId(event.target.value); void loadDashboard(event.target.value) }} style={{ padding: 10, border: '1px solid #9bacbd', borderRadius: 8, background: '#fff' }}>
-              {(dashboard?.sessions || []).map((session) => <option key={session.id} value={session.id}>{sessionLabel(session)}</option>)}
+              {!dashboard?.sessions.length && <option value="">この一覧に授業回はありません</option>}
+              {(dashboard?.sessions || []).map((session) => <option key={session.id} value={session.id}>{sessionLabel(session)}{session.isCurrentTarget ? ' ★今回指定' : ''}{session.isArchived ? '［履歴へ移動済み］' : ''}</option>)}
             </select>
           </label>
           <button onClick={() => void loadDashboard(selectedSessionId)} disabled={isLoading} style={buttonStyle}>{isLoading ? '更新中…' : '今すぐ更新'}</button>
@@ -270,6 +280,10 @@ export default function AdminPage() {
             {showSessionCreator ? '作成をやめる' : '新しい授業回を作成'}
           </button>
         </div>
+        {dashboard?.sessionControl && selectedSessionId && <AdminSessionOrganizer key={selectedSessionId} sessionId={selectedSessionId}
+          label={sessionLabel(dashboard.sessions.find(s => s.id === selectedSessionId)!)} status={dashboard.sessionControl.status}
+          isArchived={Boolean(dashboard.sessionControl.isArchived)} isCurrentTarget={Boolean(dashboard.sessionControl.isCurrentTarget)}
+          classStartedAt={dashboard.sessionControl.classStartedAt} onUpdated={() => loadDashboard()} />}
         {showSessionCreator && (
           <form onSubmit={handleCreateSession} style={{ marginTop: 16, padding: 16, borderRadius: 10, background: '#f4faf7', border: '1px solid #a9cfbd', display: 'flex', gap: 12, alignItems: 'end', flexWrap: 'wrap' }}>
             <label style={{ display: 'grid', gap: 6, fontWeight: 700 }}>授業回
@@ -305,7 +319,7 @@ export default function AdminPage() {
           </div>
         </section>
       )}
-      {dashboard?.sessionControl && selectedSessionId && (
+      {dashboard?.sessionControl && selectedSessionId && !dashboard.sessionControl.isArchived && (
         <>
 
 
