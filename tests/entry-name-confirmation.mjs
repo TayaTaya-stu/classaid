@@ -44,6 +44,9 @@ for (const existing of [false, true]) {
   const submit = () => nodes.find(n => n.type === 'form').props.onSubmit({ preventDefault() {} })
   const name = value => nodes.find(n => n.props?.id === 'display-name-input').props.onChange({ target: { value } })
   render(); const cleanups = effects.map(fn => fn()); await tick(); render()
+  assert.ok(nodes.some(n => n.type === 'h1' && text(n) === '授業チャットに参加'))
+  assert.ok(nodes.some(n => text(n).includes('カメラ」アプリでQRコード')))
+  assert.match(button('前に使った名前がわからない').props.className, /border-blue-600 bg-blue-50/)
   name('ぽむ'); render(); submit(); render()
   assert.ok(nodes.some(n => text(n).includes('同意する」または「同意しない')))
   assert.equal(requests.length, 0, 'missing consent must not enter confirmation or submit')
@@ -52,6 +55,12 @@ for (const existing of [false, true]) {
   assert.equal(requests.length, 0, 'initial entry click only confirms, with and without browser identity')
   assert.ok(nodes.some(n => n.props?.id === 'entry-name-confirmation-title' && text(n) === '前回と同じ名前ですか？'))
   assert.equal(nodes.some(n => n.type === 'form'), false)
+  assert.equal(nodes.some(n => n.type === 'h1' && text(n) === '授業チャットに参加'), false)
+  assert.equal(nodes.some(n => text(n).includes('カメラ」アプリでQRコード')), false)
+  assert.equal(nodes.some(n => text(n).includes('SupporTalk')), false)
+  assert.ok(nodes.some(n => n.type === 'p' && text(n).includes('入室前に確認してください')))
+  assert.ok(nodes.some(n => n.type === 'div' && /max-w-sm/.test(n.props?.className || '') && /border-amber-400/.test(n.props.className)))
+  assert.match(button('前に使った名前がわからない').props.className, /border-blue-600 bg-blue-50/)
   assert.ok(nodes.some(n => n.type === 'p' && text(n) === 'ぽむ'))
   assert.match(button('前に使った名前がわからない').props.className, /border-2/)
   button('名前を入力し直す').props.onClick(); render()
@@ -78,4 +87,4 @@ for (const existing of [false, true]) {
   cleanups.forEach(fn => fn?.())
  }
 }
-console.log('PASS actual entry confirmation: new/returning users and either consent, no POST before confirmation, edit preserves consent, trimmed snapshot, rapid-click guard, API errors/recovery and ownership warning retained')
+console.log('PASS actual entry confirmation: new/returning users and either consent, compact warning without repeated header, blue recovery buttons on both screens, no POST before confirmation, edit preserves consent, trimmed snapshot, rapid-click guard, API errors/recovery and ownership warning retained')

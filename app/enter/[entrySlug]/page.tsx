@@ -290,20 +290,20 @@ export default function SessionEnterPage() {
     !displayName.trim()
 
   const renderForgotNameHelp = () => !forgotPreviousName && (
-    <div className="pt-3 border-t border-amber-200 space-y-3">
+    <div className="pt-3 border-t border-slate-200 space-y-3">
       <button
         type="button"
         disabled={loading}
         aria-expanded={showForgotName}
         onClick={() => setShowForgotName(true)}
-        className="w-full min-h-12 rounded-xl border-2 border-amber-500 bg-amber-50 px-3 py-3 text-sm font-bold text-amber-950 hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-600 focus:ring-offset-2 disabled:opacity-60"
+        className="w-full min-h-12 rounded-xl border-2 border-blue-600 bg-blue-50 px-3 py-3 text-sm font-bold text-blue-800 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 disabled:opacity-60"
       >
         前に使った名前がわからない
       </button>
       {showForgotName && (
-        <div className="border border-amber-300 bg-amber-50 rounded-xl p-3 space-y-3 text-xs leading-relaxed text-amber-950" role="status">
+        <div className="border border-blue-200 bg-blue-50 rounded-xl p-3 space-y-3 text-xs leading-relaxed text-blue-950" role="status">
           <p>名前を忘れた場合は、新しい名前で参加できます。以前の参加記録とは別の参加者として登録されます。</p>
-          <button type="button" disabled={loading || isAuthInitializing || !authToken} onClick={() => { void registerWithForgottenName() }} className="w-full rounded-lg border border-amber-600 bg-white px-3 py-2.5 font-bold hover:bg-amber-100 disabled:opacity-60">新しい名前で参加する</button>
+          <button type="button" disabled={loading || isAuthInitializing || !authToken} onClick={() => { void registerWithForgottenName() }} className="w-full rounded-lg border border-blue-600 bg-white px-3 py-2.5 font-bold hover:bg-blue-100 disabled:opacity-60">新しい名前で参加する</button>
           <button type="button" disabled={loading} onClick={() => setShowForgotName(false)} className="w-full py-2 font-semibold underline underline-offset-2">戻る</button>
         </div>
       )}
@@ -311,8 +311,11 @@ export default function SessionEnterPage() {
   )
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-blue-100 p-6 sm:p-8 relative">
+    <div className={`min-h-screen flex flex-col items-center justify-center p-4 ${confirmEntryName === null ? 'bg-slate-50' : 'bg-slate-200'}`}>
+      <div className={confirmEntryName === null
+        ? 'w-full max-w-md bg-white rounded-2xl shadow-sm border border-blue-100 p-6 sm:p-8 relative'
+        : 'w-full max-w-sm bg-white rounded-2xl shadow-xl border-2 border-amber-400 p-5 relative'}>
+        {confirmEntryName === null && (
         <div className="text-center mb-5">
           <span className="inline-block px-3 py-1 bg-blue-100 text-blue-800 text-xs font-bold rounded-full mb-2 tracking-wide">
             SupporTalk
@@ -325,6 +328,7 @@ export default function SessionEnterPage() {
             </p>
           </div>
         </div>
+        )}
 
         {/* 前回参加情報の事前確認カード（前回情報がある場合、先に表示） */}
         {authInitFailed && (
@@ -455,11 +459,14 @@ export default function SessionEnterPage() {
             </button>
           </form>
         ) : (
-          <section aria-labelledby="entry-name-confirmation-title" className="space-y-4">
+          <section aria-labelledby="entry-name-confirmation-title" className="space-y-3">
+            <p className="rounded-lg bg-amber-100 px-3 py-2 text-sm font-bold text-amber-950">
+              <span aria-hidden="true">⚠ </span>入室前に確認してください
+            </p>
             <h2 id="entry-name-confirmation-title" ref={confirmationHeadingRef} tabIndex={-1} className="text-lg font-bold text-slate-900 outline-none">
               {forgotPreviousName ? '新しく使う名前を確認してください' : '前回と同じ名前ですか？'}
             </h2>
-            <p className="rounded-xl border-2 border-blue-300 bg-blue-50 px-4 py-5 text-center text-3xl font-bold text-blue-950 break-all">
+            <p className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-3 text-center text-2xl font-bold text-slate-950 break-all">
               {confirmEntryName}
             </p>
             <p className="text-xs leading-relaxed text-slate-600">
@@ -491,11 +498,14 @@ export default function SessionEnterPage() {
           </section>
         )}
 
+        {confirmEntryName === null && (
         <div className="mt-6 pt-4 border-t border-slate-100 text-center">
           <p className="text-[11px] text-slate-400">
             SupporTalk &copy; 2026
           </p>
         </div>
+
+        )}
 
         {/* 既存名前の自己申告確認モーダル */}
         {confirmClaimModal.open && (
