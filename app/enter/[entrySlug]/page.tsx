@@ -469,13 +469,13 @@ export default function SessionEnterPage() {
             <p className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-3 text-center text-2xl font-bold text-slate-950 break-all">
               {confirmEntryName}
             </p>
-            <p className="text-xs leading-relaxed text-slate-600">
-              別の名前で登録すると参加記録が分かれたり、ほかの学生が使っている名前と重なったりすることがあります。
+            <p className="text-sm font-semibold leading-relaxed text-slate-700">
+              名前を変えると、参加記録が分かれたり、ほかの学生の名前と重なったりすることがあります。
             </p>
             <p className="text-sm leading-relaxed text-slate-700">
               {forgotPreviousName
                 ? '名前不明による再登録です。この新しい名前を今後も使ってください。'
-                : '２回目以降の方は、初回に登録した名前と同じか確認してください。初めて参加する方は、この名前を今後も使ってください。'}
+                : '初めての方は、この名前を次回も使ってください。'}
             </p>
             {errorMessage && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">{errorMessage}</p>}
             <button
