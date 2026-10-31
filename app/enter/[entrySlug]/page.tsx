@@ -49,6 +49,14 @@ export default function SessionEnterPage() {
     name: '',
   })
 
+  const [confirmEntryName, setConfirmEntryName] = useState<string | null>(null)
+  const entrySubmitInFlightRef = useRef(false)
+  const confirmationHeadingRef = useRef<HTMLHeadingElement>(null)
+
+  useEffect(() => {
+    if (confirmEntryName !== null) confirmationHeadingRef.current?.focus()
+  }, [confirmEntryName])
+
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const saved = getStoredProfile()
@@ -152,6 +160,7 @@ export default function SessionEnterPage() {
       const token = await coordinator.switchNewParticipant(supabase)
       setAuthToken(token)
       setParticipantId('')
+      setConfirmEntryName(null)
       setForgotPreviousName(true)
       setShowForgotName(false)
       setDisplayName('')
@@ -167,7 +176,8 @@ export default function SessionEnterPage() {
     }
   }
 
-  async function submitEntry(claimExisting = false) {
+  async function submitEntry(claimExisting = false, confirmedName: string | null = null) {
+    if (entrySubmitInFlightRef.current || forgotSwitchInFlightRef.current) return
     if (isAuthInitializing || !authToken) {
       setErrorMessage('入室準備中です。しばらくお待ちください。')
       return
@@ -189,6 +199,15 @@ export default function SessionEnterPage() {
       return
     }
 
+    // Every entry, including a first visit in an isolated QR browser, needs explicit name confirmation.
+    if (!claimExisting && confirmedName !== normalizedName) {
+      setErrorMessage(null)
+      setShowForgotName(false)
+      setConfirmEntryName(normalizedName)
+      return
+    }
+
+    entrySubmitInFlightRef.current = true
     setLoading(true)
     setErrorMessage(null)
 
@@ -220,6 +239,7 @@ export default function SessionEnterPage() {
 
       if (res.status === 409 && data.promptClaim) {
         // 名前登録済みでAuthリンクがない場合：自己申告確認モーダルを開く
+        setConfirmEntryName(null)
         setConfirmClaimModal({ open: true, name: normalizedName })
         setLoading(false)
         return
@@ -255,6 +275,8 @@ export default function SessionEnterPage() {
     } catch {
       setErrorMessage('通信エラーが発生しました。接続を確認してください。')
       setLoading(false)
+    } finally {
+      entrySubmitInFlightRef.current = false
     }
   }
 
@@ -266,6 +288,27 @@ export default function SessionEnterPage() {
     !authToken ||
     consented === null ||
     !displayName.trim()
+
+  const renderForgotNameHelp = () => !forgotPreviousName && (
+    <div className="pt-3 border-t border-amber-200 space-y-3">
+      <button
+        type="button"
+        disabled={loading}
+        aria-expanded={showForgotName}
+        onClick={() => setShowForgotName(true)}
+        className="w-full min-h-12 rounded-xl border-2 border-amber-500 bg-amber-50 px-3 py-3 text-sm font-bold text-amber-950 hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-600 focus:ring-offset-2 disabled:opacity-60"
+      >
+        前に使った名前がわからない
+      </button>
+      {showForgotName && (
+        <div className="border border-amber-300 bg-amber-50 rounded-xl p-3 space-y-3 text-xs leading-relaxed text-amber-950" role="status">
+          <p>名前を忘れた場合は、新しい名前で参加できます。以前の参加記録とは別の参加者として登録されます。</p>
+          <button type="button" disabled={loading || isAuthInitializing || !authToken} onClick={() => { void registerWithForgottenName() }} className="w-full rounded-lg border border-amber-600 bg-white px-3 py-2.5 font-bold hover:bg-amber-100 disabled:opacity-60">新しい名前で参加する</button>
+          <button type="button" disabled={loading} onClick={() => setShowForgotName(false)} className="w-full py-2 font-semibold underline underline-offset-2">戻る</button>
+        </div>
+      )}
+    </div>
+  )
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
@@ -300,6 +343,7 @@ export default function SessionEnterPage() {
           </div>
         )}
 
+        {confirmEntryName === null ? (
           <form onSubmit={(e) => { e.preventDefault(); void submitEntry(false) }} className="space-y-4">
             {/* 1枠にまとめた名前入力欄 */}
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
@@ -325,18 +369,7 @@ export default function SessionEnterPage() {
                 <li><strong>参加したことがある方は</strong>、前回と同じ名前を入力してください。</li>
                 <li>忘れないよう、<strong>メモやスクリーンショット</strong>で控えてください。</li>
               </ul>
-              {!forgotPreviousName && (
-                <button type="button" disabled={loading} onClick={() => setShowForgotName(true)} className="text-xs text-blue-700 underline underline-offset-2">
-                  前に使った名前がわからない
-                </button>
-              )}
-              {showForgotName && !forgotPreviousName && (
-                <div className="border border-amber-200 bg-amber-50 rounded-lg p-3 space-y-2 text-xs text-amber-950" role="status">
-                  <p>名前を忘れた場合は、新しい名前で参加できます。以前の参加記録とは別の参加者として登録されます。</p>
-                  <button type="button" disabled={loading || isAuthInitializing || !authToken} onClick={() => { void registerWithForgottenName() }} className="font-semibold underline underline-offset-2">新しい名前で参加する</button>
-                  <button type="button" disabled={loading} onClick={() => setShowForgotName(false)} className="ml-3 underline underline-offset-2">戻る</button>
-                </div>
-              )}
+              {renderForgotNameHelp()}
               {forgotPreviousName && <p className="text-xs text-amber-900" role="status">名前不明による再登録です。前の記録とは別に登録します。未使用の新しい名前を入力してください。</p>}
 
             </div>
@@ -421,6 +454,42 @@ export default function SessionEnterPage() {
               )}
             </button>
           </form>
+        ) : (
+          <section aria-labelledby="entry-name-confirmation-title" className="space-y-4">
+            <h2 id="entry-name-confirmation-title" ref={confirmationHeadingRef} tabIndex={-1} className="text-lg font-bold text-slate-900 outline-none">
+              {forgotPreviousName ? '新しく使う名前を確認してください' : '前回と同じ名前ですか？'}
+            </h2>
+            <p className="rounded-xl border-2 border-blue-300 bg-blue-50 px-4 py-5 text-center text-3xl font-bold text-blue-950 break-all">
+              {confirmEntryName}
+            </p>
+            <p className="text-xs leading-relaxed text-slate-600">
+              別の名前で登録すると参加記録が分かれたり、ほかの学生が使っている名前と重なったりすることがあります。
+            </p>
+            <p className="text-sm leading-relaxed text-slate-700">
+              {forgotPreviousName
+                ? '名前不明による再登録です。この新しい名前を今後も使ってください。'
+                : '２回目以降の方は、初回に登録した名前と同じか確認してください。初めて参加する方は、この名前を今後も使ってください。'}
+            </p>
+            {errorMessage && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">{errorMessage}</p>}
+            <button
+              type="button"
+              disabled={isSubmitDisabled}
+              onClick={() => { void submitEntry(false, confirmEntryName) }}
+              className="w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:bg-slate-300 disabled:cursor-not-allowed"
+            >
+              {loading ? '参加確認中...' : 'この名前で入室する'}
+            </button>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => { setConfirmEntryName(null); setShowForgotName(false); setErrorMessage(null) }}
+              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+            >
+              名前を入力し直す
+            </button>
+            {renderForgotNameHelp()}
+          </section>
+        )}
 
         <div className="mt-6 pt-4 border-t border-slate-100 text-center">
           <p className="text-[11px] text-slate-400">

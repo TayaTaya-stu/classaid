@@ -9,6 +9,7 @@ vm.runInNewContext(compile(fs.readFileSync(new URL('../lib/student-auth-coordina
 const { StudentAuthCoordinator } = coordinatorModule.exports
 for (const existing of [true, false]) {
  for (const failSignOut of [false, true]) {
+  for (const fromConfirmation of [false, true]) {
   const hooks = [], effects = [], storage = new Map(), requests = [], events = []
   let cursor = 0, first = true, currentToken = 'original-token'
   const react = {
@@ -49,6 +50,13 @@ for (const existing of [true, false]) {
   function button(label) { const found = nodes.find(node => node.type === 'button' && text(node) === label); assert.ok(found, label); return found }
   render(); const cleanups = effects.map(fn => fn()); await new Promise(resolve => setTimeout(resolve, 15)); render()
   assert.equal(nodes.find(node => node.props?.id === 'display-name-input').props.value, '')
+  if (fromConfirmation) {
+   nodes.find(node => node.props?.id === 'display-name-input').props.onChange({ target: { value: '確認する名' } })
+   nodes.find(node => node.type === 'input' && node.props?.type === 'radio').props.onChange()
+   render(); nodes.find(node => node.type === 'form').props.onSubmit({ preventDefault() {} }); render()
+   assert.equal(requests.length, 0)
+   assert.ok(nodes.some(node => node.props?.id === 'entry-name-confirmation-title'))
+  }
   button('前に使った名前がわからない').props.onClick(); render()
   assert.ok(nodes.some(node => text(node) === '名前を忘れた場合は、新しい名前で参加できます。以前の参加記録とは別の参加者として登録されます。'))
   button('戻る').props.onClick(); render()
@@ -67,6 +75,8 @@ for (const existing of [true, false]) {
    nodes.find(node => node.props?.id === 'display-name-input').props.onChange({ target: { value: '新しい名' } })
    const radio = nodes.find(node => node.type === 'input' && node.props?.type === 'radio'); assert.ok(radio); radio.props.onChange()
    render(); nodes.find(node => node.type === 'form').props.onSubmit({ preventDefault() {} })
+   render(); assert.equal(requests.length, 0)
+   button('この名前で入室する').props.onClick()
    await new Promise(resolve => setTimeout(resolve, 15))
    assert.equal(requests.length, 1)
    assert.equal(requests[0].authToken, 'new-token')
@@ -75,6 +85,7 @@ for (const existing of [true, false]) {
    assert.equal(routes[0], '/room/test-room')
   }
   cleanups.forEach(fn => fn?.())
+  }
  }
 }
-console.log('PASS actual entry recovery: help visible with/without saved identity; cancel preserves identity; confirmed switch serialized; sign-out failure blocks registration; forgotten-name request uses new token without claiming old records')
+console.log('PASS actual entry recovery: prominent help works from input AND confirmation with/without saved identity; cancel preserves identity; confirmed switch serialized; sign-out failure blocks registration; forgotten-name request uses new token without claiming old records')
