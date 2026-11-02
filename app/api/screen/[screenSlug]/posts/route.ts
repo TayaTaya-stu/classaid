@@ -96,10 +96,10 @@ export async function GET(request: Request, context: RouteContext) {
     const {events,nextCursor}=await getProjectionEvents({sessionId:session.id,roomId:rooms[0].id,afterCursor:raw===null?null:Number(raw)})
     // Only completed pairs are delivered. Older staggered clients also stop receiving previews.
     let presentation: Record<string, unknown> = {}
-    if(url.searchParams.get('presentation')==='paired-v2') {
+    if(url.searchParams.get('presentation')==='trailing-v3') {
       const {readProjectionDisplay}=await import('@/lib/projection-display')
-      presentation={display:await readProjectionDisplay(session.id),presentationRevision:'paired-v2'}
-    } else if(url.searchParams.get('presentation')==='staggered-v1') {
+      presentation={display:await readProjectionDisplay(session.id),presentationRevision:'trailing-v3'}
+    } else if(url.searchParams.get('presentation')==='staggered-v1'||url.searchParams.get('presentation')==='paired-v2') {
       presentation={display:'simultaneous',presentationRevision:'paired-v2'}
     }
     return NextResponse.json({

@@ -25,7 +25,7 @@ export async function POST(request:Request) {
     const text=await request.text()
     if(text.length>1024)return NextResponse.json({error:'入力が長すぎます。'},{status:413,headers})
     const b=JSON.parse(text)
-    if(!b||!['simultaneous','staggered'].includes(b.display)||!await sessionExists(b.sessionId))return NextResponse.json({error:'授業回または表示方式が正しくありません。'},{status:400,headers})
+    if(!b||!['simultaneous','staggered','staggered_random'].includes(b.display)||!await sessionExists(b.sessionId))return NextResponse.json({error:'授業回または表示方式が正しくありません。'},{status:400,headers})
     const {error}=await supabaseAdmin.from('event_logs').insert({session_id:b.sessionId,event_type:DISPLAY_EVENT,metadata:{display:b.display,version:'projection-display-v1'}})
     if(error)throw error
     return NextResponse.json({display:b.display},{headers})

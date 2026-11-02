@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
 export default function ProjectionDisplayControl({sessionId,disabled}:{sessionId:string;disabled:boolean}) {
-  const [display,setDisplay]=useState<'simultaneous'|'staggered'|null>(null)
+  const [display,setDisplay]=useState<'simultaneous'|'staggered'|'staggered_random'|null>(null)
   const [busy,setBusy]=useState(false)
   const [message,setMessage]=useState('')
   const flight=useRef(false)
@@ -14,10 +14,10 @@ export default function ProjectionDisplayControl({sessionId,disabled}:{sessionId
       .catch(e=>{if(!abort.signal.aborted)setMessage(e instanceof Error?e.message:'取得できませんでした。')})
     return()=>{current.current=null;abort.abort()}
   },[sessionId])
-  async function change() {
-    if(flight.current||!display||disabled)return
+  async function change(next:'simultaneous'|'staggered'|'staggered_random') {
+    if(flight.current||!display||disabled||display===next)return
     flight.current=true;setBusy(true);setMessage('')
-    const id=sessionId,next=display==='simultaneous'?'staggered':'simultaneous'
+    const id=sessionId
     try{
       const r=await fetch('/api/admin/projection-display',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:id,display:next}),signal:AbortSignal.timeout(10000)})
       const d=await r.json();if(!r.ok)throw Error(d.error)
@@ -26,11 +26,11 @@ export default function ProjectionDisplayControl({sessionId,disabled}:{sessionId
     finally{if(current.current===id){flight.current=false;setBusy(false)}}
   }
   return <div style={{padding:'12px 0',borderTop:'1px dashed #d0c2e8'}}>
-    <strong>投影の表示方式：{display==='staggered'?'少し遅れて表示':display==='simultaneous'?'同時':'確認中'}</strong>{' '}
-    <button type="button" onClick={()=>void change()} disabled={disabled||busy||!display} style={{padding:'8px 12px',borderRadius:8,border:'1px solid #214f7b',background:'#fff',color:'#214f7b',fontWeight:700}}>
-      {busy?'保存中…':display==='staggered'?'同時表示に戻す':'少し遅れて表示を試す'}
-    </button>
-    <p style={{fontSize:12,marginBottom:0}}>教授アプリ0.1.7以降に対応。完成したペアを一緒に受け取り、AI返信だけを0.25～0.65秒遅れて表示します。線と返信先名は常に表示し、位置のずれは小さく抑えます。AI条件・生成内容は変わりません。</p>
+    <strong>投影の表示方式：{display==='staggered'?'一定間隔':display==='staggered_random'?'ランダム間隔':display==='simultaneous'?'同時':'確認中'}</strong>
+    <div role="group" aria-label="投影の表示方式" style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:8}}>
+      {([['simultaneous','同時'],['staggered','一定間隔'],['staggered_random','ランダム間隔']] as const).map(([value,label])=><button key={value} type="button" aria-pressed={display===value} onClick={()=>void change(value)} disabled={disabled||busy||!display} style={{padding:'8px 12px',borderRadius:8,border:'1px solid #214f7b',background:display===value?'#214f7b':'#fff',color:display===value?'#fff':'#214f7b',fontWeight:700}}>{label}</button>)}
+    </div>
+    <p style={{fontSize:12,marginBottom:0}}>時間差は試験版0.1.8専用です。完成したペアを受け取り、AIの吹き出しが後ろから横に流れてきます。一定間隔は約0.6秒、ランダムは約0.45～0.75秒（画面・速度により間隔を抑えます）。表示名は「学生AI」、線と色でつながります。0.1.5～0.1.7は従来の同時表示です。</p>
     {message&&<p role="status">{message}</p>}
   </div>
 }
