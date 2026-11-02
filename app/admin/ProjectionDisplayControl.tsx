@@ -26,11 +26,11 @@ export default function ProjectionDisplayControl({sessionId,disabled}:{sessionId
     finally{if(current.current===id){flight.current=false;setBusy(false)}}
   }
   return <div style={{padding:'12px 0',borderTop:'1px dashed #d0c2e8'}}>
-    <strong>投影の表示方式：{display==='staggered'?'時間差':display==='simultaneous'?'同時':'確認中'}</strong>{' '}
+    <strong>投影の表示方式：{display==='staggered'?'少し遅れて表示':display==='simultaneous'?'同時':'確認中'}</strong>{' '}
     <button type="button" onClick={()=>void change()} disabled={disabled||busy||!display} style={{padding:'8px 12px',borderRadius:8,border:'1px solid #214f7b',background:'#fff',color:'#214f7b',fontWeight:700}}>
-      {busy?'保存中…':display==='staggered'?'同時表示に戻す':'時間差表示を試す'}
+      {busy?'保存中…':display==='staggered'?'同時表示に戻す':'少し遅れて表示を試す'}
     </button>
-    <p style={{fontSize:12,marginBottom:0}}>教授アプリ0.1.6以降に対応。同時：従来の表示。時間差：人間投稿を先に出し、生成後のAI返信を線でつなぎます。AI条件・生成内容は変わりません。</p>
+    <p style={{fontSize:12,marginBottom:0}}>教授アプリ0.1.7以降に対応。完成したペアを一緒に受け取り、AI返信だけを0.25～0.65秒遅れて表示します。線と返信先名は常に表示し、位置のずれは小さく抑えます。AI条件・生成内容は変わりません。</p>
     {message&&<p role="status">{message}</p>}
   </div>
 }

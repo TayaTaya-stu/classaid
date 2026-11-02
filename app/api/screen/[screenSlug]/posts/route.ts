@@ -94,15 +94,13 @@ export async function GET(request: Request, context: RouteContext) {
     if(raw!==null && (!/^\d+$/.test(raw)||!Number.isSafeInteger(Number(raw)))) return NextResponse.json({error:'Invalid cursor'},{status:400})
     const { getProjectionEvents }=await import('@/lib/reaction-ai/service')
     const {events,nextCursor}=await getProjectionEvents({sessionId:session.id,roomId:rooms[0].id,afterCursor:raw===null?null:Number(raw)})
-    // Older apps continue to receive only the completed event protocol.
+    // Only completed pairs are delivered. Older staggered clients also stop receiving previews.
     let presentation: Record<string, unknown> = {}
-    if(url.searchParams.get('presentation')==='staggered-v1') {
-      const {readProjectionDisplay,getHumanPreviews}=await import('@/lib/projection-display')
-      const display=await readProjectionDisplay(session.id)
-      const h=url.searchParams.get('afterHumanId')
-      if(h!==null&&(!/^\d+$/.test(h)||!Number.isSafeInteger(Number(h))))return NextResponse.json({error:'Invalid human cursor'},{status:400})
-      const preview=await getHumanPreviews(session.id,rooms[0].id,h===null?null:Number(h))
-      presentation={display,previews:display==='staggered'&&reactionAiMode!=='off'&&session.reaction_ai_status!=='stopped'?preview.previews:[],humanCursor:preview.humanCursor}
+    if(url.searchParams.get('presentation')==='paired-v2') {
+      const {readProjectionDisplay}=await import('@/lib/projection-display')
+      presentation={display:await readProjectionDisplay(session.id),presentationRevision:'paired-v2'}
+    } else if(url.searchParams.get('presentation')==='staggered-v1') {
+      presentation={display:'simultaneous',presentationRevision:'paired-v2'}
     }
     return NextResponse.json({
       ...presentation,

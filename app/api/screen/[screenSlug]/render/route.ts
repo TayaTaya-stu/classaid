@@ -25,7 +25,7 @@ export async function POST(request: Request, context: { params: Promise<{ screen
       const {count,error:ce}=await supabaseAdmin.from('event_logs').select('id',{count:'exact',head:true}).eq('session_id',session.id).eq('event_type','projection_human_visible').gte('created_at',new Date(Date.now()-60000).toISOString())
       if(ce)throw ce
       if((count??0)>1200)return NextResponse.json({error:'Rate limit'},{status:429})
-      const {error}=await supabaseAdmin.from('event_logs').insert({session_id:session.id,event_type:'projection_human_visible',metadata:{human_post_id:x.humanPostId,client_instance_id:x.clientInstanceId,rendered_at:new Date(x.renderedAt).toISOString(),display:'staggered',version:'projection-display-v1'}})
+      const {error}=await supabaseAdmin.from('event_logs').insert({session_id:session.id,event_type:'projection_human_visible',metadata:{human_post_id:x.humanPostId,client_instance_id:x.clientInstanceId,rendered_at:new Date(x.renderedAt).toISOString(),display:'staggered',version:x.presentationRevision==='paired-v2'?'projection-paired-v2':'projection-display-v1'}})
       if(error)throw error
       return NextResponse.json({ok:true})
     }
@@ -66,7 +66,7 @@ export async function POST(request: Request, context: { params: Promise<{ screen
     if (error && error.code !== '23505') throw new Error('Render log failed')
     if(x.phase==='viewport_entered') {
       const humanRenderedAt=Number.isFinite(x.humanRenderedAt)&&x.humanRenderedAt<=x.renderedAt&&x.renderedAt-x.humanRenderedAt<=7200000?new Date(x.humanRenderedAt).toISOString():null
-      const {error:displayLogError}=await supabaseAdmin.from('event_logs').insert({session_id:session.id,event_type:'projection_event_visible',metadata:{event_id:x.eventId,client_instance_id:x.clientInstanceId,display:x.presentation==='staggered'?'staggered':'simultaneous',human_rendered_at:humanRenderedAt,final_rendered_at:new Date(x.renderedAt).toISOString(),parent_replayed:false,parent_outside:x.parentOutside===true,version:'projection-display-v1'}})
+      const {error:displayLogError}=await supabaseAdmin.from('event_logs').insert({session_id:session.id,event_type:'projection_event_visible',metadata:{event_id:x.eventId,client_instance_id:x.clientInstanceId,display:x.presentation==='staggered'?'staggered':'simultaneous',human_rendered_at:humanRenderedAt,final_rendered_at:new Date(x.renderedAt).toISOString(),parent_replayed:false,parent_outside:x.parentOutside===true,version:x.presentationRevision==='paired-v2'?'projection-paired-v2':'projection-display-v1'}})
       if(displayLogError)console.warn('Projection display diagnostic log failed')
     }
     return NextResponse.json({ ok: true })
