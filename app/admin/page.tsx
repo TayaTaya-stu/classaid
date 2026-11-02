@@ -147,23 +147,6 @@ export default function AdminPage() {
     }
   }
 
-  async function emergencyStopReaction() {
-    if (!selectedSessionId) return
-    try {
-      const response = await fetch('/api/admin/session-control', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'pause_ai', sessionId: selectedSessionId }),
-      })
-      const result = (await response.json()) as { error?: string }
-      if (!response.ok) throw new Error(result.error || '緊急停止に失敗しました。')
-      setReactionConfigMessage('AIと音声を一時停止しました。')
-      await loadDashboard(selectedSessionId)
-    } catch (error) {
-      setReactionConfigMessage(error instanceof Error ? error.message : '緊急停止に失敗しました。')
-    }
-  }
-
   async function handleCreateSession(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setIsCreatingSession(true)
@@ -341,7 +324,7 @@ export default function AdminPage() {
             <p style={{ margin: '0 0 12px' }}>
               現在のモード：<strong>{
                 dashboard.sessionControl.reactionConfig.mode === 'off' ? 'AIなし' :
-                dashboard.sessionControl.reactionConfig.mode === 'empathy' ? '共感' :
+                dashboard.sessionControl.reactionConfig.mode === 'empathy' ? '共感（以前の設定）' :
                 dashboard.sessionControl.reactionConfig.mode === 'lecture_bridge' ? '授業接続' :
                 dashboard.sessionControl.reactionConfig.mode === 'neutral' ? '中立' : dashboard.sessionControl.reactionConfig.mode
               }</strong> ／ 状態：<strong>{
@@ -354,18 +337,15 @@ export default function AdminPage() {
               <label style={{ display: 'grid', gap: 6, fontWeight: 700 }}>AI返信モードの選択
                 <select disabled={Boolean(dashboard.sessionControl.classStartedAt) || dashboard.sessionControl.isLocked} value={reactionMode} onChange={(event) => setReactionMode(event.target.value as 'off' | 'empathy' | 'lecture_bridge' | 'neutral')} style={{ padding: 10, border: '1px solid #9bacbd', borderRadius: 8, background: '#fff' }}>
                   <option value="off">AIなし（人間投稿のみ投影）</option>
-                  <option value="empathy">共感（気持ち・着眼点の受け止め）</option>
+                  {reactionMode==='empathy'&&<option value="empathy" disabled>以前の設定：共感（新規選択不可）</option>}
                   <option value="lecture_bridge">授業接続（講義内容・専門話題への関連付け）</option>
                   <option value="neutral">中立（短い言い換え）</option>
                 </select>
               </label>
 
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-                <button type="button" disabled={Boolean(dashboard.sessionControl.classStartedAt) || dashboard.sessionControl.isLocked} onClick={() => void updateReactionSettings()} style={{ ...buttonStyle, background: '#214f7b', color: '#fff', borderColor: '#214f7b' }}>
+                <button type="button" disabled={Boolean(dashboard.sessionControl.classStartedAt) || dashboard.sessionControl.isLocked || reactionMode==='empathy'} onClick={() => void updateReactionSettings()} style={{ ...buttonStyle, background: '#214f7b', color: '#fff', borderColor: '#214f7b' }}>
                   設定を保存
-                </button>
-                <button type="button" disabled={!dashboard.sessionControl.classStartedAt || dashboard.sessionControl.reactionConfig.status === 'stopped'} onClick={() => void emergencyStopReaction()} style={{ ...buttonStyle, background: '#9f1239', color: '#fff', borderColor: '#9f1239' }}>
-                  AIと音声を停止
                 </button>
                 {dashboard.sessionControl.classStartedAt && (
                   <span style={{ fontSize: 13, color: '#536273' }}>
@@ -387,7 +367,8 @@ export default function AdminPage() {
       )}
 
       <section style={{ padding: 18, borderRadius: 14, background: '#fff', border: '1px solid #c7d3df', marginTop: 20 }}>
-        <h2 style={{ marginTop: 0 }}>4. ログ・分析</h2>
+        <details>
+        <summary style={{cursor:'pointer',fontSize:20,fontWeight:700}}>4. 研究用ログ・CSV</summary>
         <p style={{ color: '#536273', marginBottom: 12 }}>
           授業回を選んで記録を確認し、CSVで保存できます。学生には表示されません。
         </p>
@@ -448,6 +429,7 @@ export default function AdminPage() {
             </table>
           </div>
         )}
+        </details>
       </section>
     </main>
   )

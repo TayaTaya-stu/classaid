@@ -2,7 +2,6 @@
 
 import { type FormEvent, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import ProjectionDisplayControl from './ProjectionDisplayControl'
 
 export type SessionControlData = {
   status: string
@@ -149,7 +148,6 @@ export default function AdminSessionControl({ sessionId, control, onUpdated }: P
           </span>
         </div>
 
-        <ProjectionDisplayControl key={sessionId} sessionId={sessionId} disabled={Boolean(control.isLocked || control.isArchived || isExpired || ['completed','closed','locked'].includes(control.status))} />
 
         {isClassStarted && !isExpired && (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', paddingTop: 6, borderTop: '1px dashed #d0c2e8' }}>

@@ -19,8 +19,8 @@ export async function controlReaction(sessionId: unknown, action: string, mode?:
   if (!validActions.includes(action)) {
     return NextResponse.json({ error: '未対応の操作です。' }, { status: 400 })
   }
-  if (action === 'configure' && !['off', 'empathy', 'lecture_bridge', 'neutral'].includes(String(mode))) {
-    return NextResponse.json({ error: 'AIモードが不正です。' }, { status: 400 })
+  if (action === 'configure' && !['off', 'lecture_bridge', 'neutral'].includes(String(mode))) {
+    return NextResponse.json({ error: '選べるAIモードは授業接続・中立・AIなしです。' }, { status: 400 })
   }
 
   if (action === 'start') {
